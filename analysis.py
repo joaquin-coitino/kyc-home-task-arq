@@ -58,18 +58,26 @@ def pct(n, total) -> str:
 details = pd.read_csv(DETAILS_CSV)
 summary = pd.read_csv(SUMMARY_CSV)
 
-# Normalise non-standard decision labels
+# Normalise non-standard decision labels in both datasets
 label_map = {"OK": "PASSED", "APPROVED": "PASSED", "PASSES": "PASSED"}
 details["decision_label"] = details["decision_label"].replace(label_map)
-summary["decision_type"] = summary["decision_type"].replace(label_map)
+summary["decision_type"]  = summary["decision_type"].replace(label_map)
 
-# Parse dates
+# Parse dates on summary before merge
 summary["date"] = pd.to_datetime(summary["date_"], utc=True)
 summary["week"] = summary["date"].dt.to_period("W")
 summary["day"]  = summary["date"].dt.date
 
+# Merge: one row per user, details provides check-level columns, summary provides
+# the authoritative outcome (decision_type) and date information
+df = details.merge(
+    summary[["user_reference", "decision_type", "date", "week", "day"]],
+    on="user_reference",
+    how="inner",
+)
+
 # Computed columns
-details["age"] = 2023 - details["year_birth"]
+df["age"] = 2023 - df["year_birth"]
 
 CHECKS = [
     ("usability_decision",           "Usability"),
@@ -81,42 +89,78 @@ CHECKS = [
     ("watchlist_screening_decision", "Watchlist"),
 ]
 
-# ── Core metrics ─────────────────────────────────────────────────────────────
-total       = len(details)
-n_passed    = (details["decision_label"] == "PASSED").sum()
-n_rejected  = (details["decision_label"] == "REJECTED").sum()
-n_warning   = (details["decision_label"] == "WARNING").sum()
+# ── Core metrics — use decision_type (summary) as authoritative outcome ───────
+total       = len(df)
+n_passed    = (df["decision_type"] == "PASSED").sum()
+n_rejected  = (df["decision_type"] == "REJECTED").sum()
+n_warning   = (df["decision_type"] == "WARNING").sum()
 pass_rate   = n_passed / total * 100
-date_min    = summary["date"].min().strftime("%b %d, %Y")
-date_max    = summary["date"].max().strftime("%b %d, %Y")
+date_min    = df["date"].min().strftime("%b %d, %Y")
+date_max    = df["date"].max().strftime("%b %d, %Y")
 
 # ── First failing check attribution ─────────────────────────────────────────
-rejected_df = details[details["decision_label"] == "REJECTED"].copy()
+rejected_df = df[df["decision_type"] == "REJECTED"].copy()
 
 def first_fail(row):
-    for col, _ in CHECKS:
-        if row[col] == "REJECTED":
-            return col
-    # image checks NOT_EXECUTED = document not processed
-    if row["image_checks_decision"] == "NOT_EXECUTED":
-        return "incomplete_submission"
+    # Usability is the root — always runs first
+    if row["usability_decision"] == "REJECTED":
+        return "usability_decision"
+
+    # Extraction depends on Usability.
+    # If extraction did not execute despite usability passing → extraction was blocked.
+    if row["extraction_decision"] == "NOT_EXECUTED":
+        if row["usability_decision"] == "PASSED":
+            return "extraction_blocked"        # extraction failed to run
+        if row["usability_decision"] == "WARNING":
+            return "usability_warning_blocked" # usability warning cascaded downstream
+        return "usability_not_executed"        # usability itself didn't run
+
+    # Image Checks depends on Usability + Extraction
+    if row["image_checks_decision"] == "REJECTED":
+        return "image_checks_decision"
+
+    # Data Checks depends on Usability + Extraction + Image Checks
+    if row["data_checks_decision"] == "REJECTED":
+        return "data_checks_decision"
+
+    # Liveness depends only on selfie Usability — independent of doc chain
+    if row["liveness_decision"] == "REJECTED":
+        return "liveness_decision"
+
+    # Similarity depends on Usability only for face detectability — mostly independent
+    if row["similarity_decision"] == "REJECTED":
+        return "similarity_decision"
+
     return "other"
 
 rejected_df["first_fail"] = rejected_df.apply(first_fail, axis=1)
 fail_counts = rejected_df["first_fail"].value_counts()
 
+# Pre-compute failure category totals used across multiple HTML sections
+n_extraction_blocked = fail_counts.get("extraction_blocked", 0)
+n_usability_warn     = fail_counts.get("usability_warning_blocked", 0)
+n_usability_noexec   = fail_counts.get("usability_not_executed", 0)
+n_usability          = fail_counts.get("usability_decision", 0)
+n_image              = fail_counts.get("image_checks_decision", 0)
+n_liveness           = fail_counts.get("liveness_decision", 0)
+n_similarity         = fail_counts.get("similarity_decision", 0)
+n_datachecks         = fail_counts.get("data_checks_decision", 0)
+n_pipeline_blocked   = n_extraction_blocked + n_usability_warn + n_usability_noexec
+
 fail_labels_map = {
-    "usability_decision":           "Usability",
+    "usability_decision":           "Usability\n(hard reject)",
+    "usability_warning_blocked":    "Usability Warning\n(blocked downstream)",
+    "usability_not_executed":       "Usability\n(not executed)",
+    "extraction_blocked":           "Extraction\n(blocked despite usability pass)",
     "image_checks_decision":        "Image Checks",
     "liveness_decision":            "Liveness",
     "similarity_decision":          "Similarity",
     "data_checks_decision":         "Data Checks",
-    "incomplete_submission":        "Incomplete Submission\n(checks not executed)",
     "other":                        "Other",
 }
 
 # ── Weekly trend ─────────────────────────────────────────────────────────────
-weekly = summary.groupby("week")["decision_type"].value_counts().unstack(fill_value=0)
+weekly = df.groupby("week")["decision_type"].value_counts().unstack(fill_value=0)
 for col in ["PASSED", "REJECTED", "WARNING"]:
     if col not in weekly.columns:
         weekly[col] = 0
@@ -125,37 +169,37 @@ weekly["rejection_rate"] = weekly["REJECTED"] / weekly["total"] * 100
 weekly.index = [str(p) for p in weekly.index]
 
 # ── Pass rate by doc type ────────────────────────────────────────────────────
-doc_stats = details.groupby("data_type").apply(
+doc_stats = df.groupby("data_type").apply(
     lambda g: pd.Series({
         "total": len(g),
-        "passed": (g["decision_label"] == "PASSED").sum(),
+        "passed": (g["decision_type"] == "PASSED").sum(),
     })
 ).reset_index()
 doc_stats["pass_rate"] = doc_stats["passed"] / doc_stats["total"] * 100
 doc_stats = doc_stats.sort_values("pass_rate")
 
 # ── Pass rate by country ──────────────────────────────────────────────────────
-country_stats = details.groupby("data_issuing_country").apply(
+country_stats = df.groupby("data_issuing_country").apply(
     lambda g: pd.Series({
         "total": len(g),
-        "passed": (g["decision_label"] == "PASSED").sum(),
+        "passed": (g["decision_type"] == "PASSED").sum(),
     })
 ).reset_index()
 country_stats["pass_rate"] = country_stats["passed"] / country_stats["total"] * 100
 
 # ── Sub-type pass rates ───────────────────────────────────────────────────────
-sub_stats = details.groupby(["data_issuing_country", "data_sub_type"]).apply(
-    lambda g: pd.Series({"total": len(g), "passed": (g["decision_label"] == "PASSED").sum()})
+sub_stats = df.groupby(["data_issuing_country", "data_sub_type"]).apply(
+    lambda g: pd.Series({"total": len(g), "passed": (g["decision_type"] == "PASSED").sum()})
 ).reset_index()
 sub_stats["pass_rate"] = sub_stats["passed"] / sub_stats["total"] * 100
 sub_stats = sub_stats[sub_stats["total"] >= 50]
 
 # ── Failure reason breakdowns ─────────────────────────────────────────────────
 def top_reasons(col_decision, col_details, exclude=("OK", "PRECONDITION_NOT_FULFILLED"), top=6):
-    mask = details[col_decision].isin(["REJECTED", "WARNING"])
-    df = details[mask][col_details].value_counts()
-    df = df[~df.index.isin(exclude)]
-    return df.head(top)
+    mask = df[col_decision].isin(["REJECTED", "WARNING"])
+    result = df[mask][col_details].value_counts()
+    result = result[~result.index.isin(exclude)]
+    return result.head(top)
 
 usability_reasons  = top_reasons("usability_decision",    "usability_decision_details")
 image_reasons      = top_reasons("image_checks_decision", "image_checks_decision_details")
@@ -164,7 +208,7 @@ similarity_reasons = top_reasons("similarity_decision",   "similarity_decision_d
                                   exclude=("OK", "PRECONDITION_NOT_FULFILLED", "MATCH"))
 
 # ── Daily volume ──────────────────────────────────────────────────────────────
-daily = summary.groupby("day")["decision_type"].value_counts().unstack(fill_value=0)
+daily = df.groupby("day")["decision_type"].value_counts().unstack(fill_value=0)
 for col in ["PASSED", "REJECTED", "WARNING"]:
     if col not in daily.columns:
         daily[col] = 0
@@ -191,18 +235,124 @@ CHART_DONUT = fig_to_b64(fig)
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# CHART 2 — First failing check bar
+# CHART 2 — Check dependency DAG (flowchart)
+# ════════════════════════════════════════════════════════════════════════════
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch
+
+def draw_box(ax, xy, text, color, width=1.8, height=0.55, fontsize=9.5):
+    x, y = xy
+    box = FancyBboxPatch((x - width/2, y - height/2), width, height,
+                         boxstyle="round,pad=0.06", linewidth=1.2,
+                         edgecolor=color, facecolor=color + "22")
+    ax.add_patch(box)
+    ax.text(x, y, text, ha="center", va="center", fontsize=fontsize,
+            fontweight="bold", color=color)
+
+def arrow(ax, src, dst, color="#9CA3AF"):
+    ax.annotate("", xy=dst, xytext=src,
+                arrowprops=dict(arrowstyle="-|>", color=color, lw=1.4))
+
+# Node positions: (x, y)  — y increases upward, we'll invert
+nodes = {
+    "Usability":            (4.0, 5.0),
+    "Extraction":           (2.5, 3.8),
+    "Image Checks":         (2.5, 2.6),
+    "Data Checks":          (1.2, 1.4),
+    "Watchlist\nScreening": (3.8, 1.4),
+    "Liveness":             (6.0, 3.8),
+    "Similarity":           (7.2, 3.8),
+}
+
+# Edges: (from, to, label)
+edges = [
+    ("Usability",    "Extraction",           "doc"),
+    ("Extraction",   "Image Checks",         "doc"),
+    ("Image Checks", "Data Checks",          "doc"),
+    ("Image Checks", "Watchlist\nScreening", "doc"),
+    ("Usability",    "Liveness",             "selfie"),
+    ("Usability",    "Similarity",           "face detect"),
+]
+
+node_colors = {
+    "Usability":            BRAND_DARK,
+    "Extraction":           BRAND_BLUE,
+    "Image Checks":         BRAND_BLUE,
+    "Data Checks":          BRAND_BLUE,
+    "Watchlist\nScreening": BRAND_BLUE,
+    "Liveness":             "#7C3AED",   # purple — independent branch
+    "Similarity":           "#7C3AED",
+}
+
+fig, ax = plt.subplots(figsize=(10, 5))
+ax.set_xlim(0, 9)
+ax.set_ylim(0.6, 5.8)
+ax.axis("off")
+ax.set_facecolor("#FAFAFA")
+fig.patch.set_facecolor("#FAFAFA")
+
+# Draw edges first (behind boxes)
+edge_colors = {"doc": BRAND_BLUE, "selfie": "#7C3AED", "face detect": "#7C3AED"}
+for src, dst, etype in edges:
+    sx, sy = nodes[src]
+    dx, dy = nodes[dst]
+    arrow(ax, (sx, sy), (dx, dy), color=edge_colors[etype])
+
+# Edge labels
+edge_label_positions = {
+    ("Usability", "Liveness"):           (5.3, 4.5, "selfie\nusability"),
+    ("Usability", "Similarity"):         (6.0, 4.5, "face\ndetectability"),
+    ("Usability", "Extraction"):         (3.0, 4.5, ""),
+}
+for (src, dst), (lx, ly, lbl) in edge_label_positions.items():
+    if lbl:
+        ax.text(lx, ly, lbl, ha="center", va="center", fontsize=7.5,
+                color="#6B7280", style="italic")
+
+# Draw node boxes
+for name, (x, y) in nodes.items():
+    draw_box(ax, (x, y), name, node_colors[name])
+
+# Legend
+leg_items = [
+    mpatches.Patch(facecolor=BRAND_DARK+"22", edgecolor=BRAND_DARK, label="Root check"),
+    mpatches.Patch(facecolor=BRAND_BLUE+"22", edgecolor=BRAND_BLUE, label="Document chain"),
+    mpatches.Patch(facecolor="#7C3AED22",     edgecolor="#7C3AED",  label="Selfie / identity checks"),
+]
+ax.legend(handles=leg_items, loc="lower center", ncol=3, fontsize=8.5,
+          bbox_to_anchor=(0.5, -0.04), frameon=True, edgecolor="#E5E7EB")
+
+ax.set_title("Jumio KYC Check Dependency Graph", fontsize=13, fontweight="bold",
+             color=BRAND_DARK, pad=10)
+
+plt.tight_layout()
+CHART_DAG = fig_to_b64(fig)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHART 3 — First failing check bar
 # ════════════════════════════════════════════════════════════════════════════
 fc = fail_counts.rename(index=fail_labels_map).sort_values()
-colors_bar = [FAIL_RED if "not executed" not in l.lower() else WARN_AMBER for l in fc.index]
-fig, ax = plt.subplots(figsize=(7, 4))
+
+def bar_color(label):
+    if "warning" in label.lower() or "blocked" in label.lower() or "not executed" in label.lower():
+        return WARN_AMBER
+    return FAIL_RED
+
+colors_bar = [bar_color(l) for l in fc.index]
+fig, ax = plt.subplots(figsize=(8, 4.5))
 bars = ax.barh(fc.index, fc.values, color=colors_bar, edgecolor="none")
 for bar in bars:
     ax.text(bar.get_width() + 30, bar.get_y() + bar.get_height()/2,
             f"{bar.get_width():,}", va="center", fontsize=9, color=GRAY)
 ax.set_xlabel("Number of rejections")
-ax.set_title("Where Do KYC Rejections Happen?")
+ax.set_title("Root Cause of KYC Rejections (by first blocking check)")
 ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+legend_items = [
+    mpatches.Patch(color=FAIL_RED,   label="Hard rejection (check failed)"),
+    mpatches.Patch(color=WARN_AMBER, label="Pipeline blocked (check not executed)"),
+]
+ax.legend(handles=legend_items, fontsize=8.5, loc="lower right")
 plt.tight_layout()
 CHART_FAIL_CHECK = fig_to_b64(fig)
 
@@ -517,10 +667,10 @@ h(f"""<div class="page">
 </p>
 
 <div class="finding red no-break">
-  <strong>Finding 1 — 43% of rejections are "incomplete submissions", not genuine failures</strong>
-  {pct(fail_counts.get('incomplete_submission', 0), n_rejected)} of all rejections occur because the image-check pipeline
-  never ran — the system cannot process the document and rejects the user by default.
-  This is a UX and infrastructure problem, not a fraud signal.
+  <strong>Finding 1 — Pipeline blockages account for the largest rejection category</strong>
+  {pct(n_pipeline_blocked, n_rejected)} of all rejections occur because the Extraction check never ran,
+  stalling all downstream document checks. These are not genuine verification failures —
+  they are infrastructure or UX problems and represent the highest-impact improvement opportunity.
 </div>
 
 <div class="finding amber no-break">
@@ -556,52 +706,56 @@ h(f"""<div class="page">
     outcome) and <strong>KYC_Details</strong> (one row per attempt with the result of each
     individual check). Both contain {total:,} unique user references with no duplicates.</p>
     <p><strong>Date range:</strong> {date_min} – {date_max} ({(summary['date'].max()-summary['date'].min()).days} days)</p>
-    <p><strong>Countries:</strong> Mexico (MEX) — {(details['data_issuing_country']=='MEX').sum():,} attempts &nbsp;|&nbsp;
-    Argentina (ARG) — {(details['data_issuing_country']=='ARG').sum():,} attempts</p>
-    <p><strong>Document types:</strong> ID Card ({(details['data_type']=='ID_CARD').sum():,}),
-    Passport ({(details['data_type']=='PASSPORT').sum():,}),
-    Driving License ({(details['data_type']=='DRIVING_LICENSE').sum():,}),
-    Visa ({(details['data_type']=='VISA').sum():,})</p>
-    <p><strong>KYC checks performed:</strong> Usability → Image Checks → Extraction →
-    Data Checks → Liveness → Similarity → Watchlist Screening</p>
+    <p><strong>Countries:</strong> Mexico (MEX) — {(df['data_issuing_country']=='MEX').sum():,} attempts &nbsp;|&nbsp;
+    Argentina (ARG) — {(df['data_issuing_country']=='ARG').sum():,} attempts</p>
+    <p><strong>Document types:</strong> ID Card ({(df['data_type']=='ID_CARD').sum():,}),
+    Passport ({(df['data_type']=='PASSPORT').sum():,}),
+    Driving License ({(df['data_type']=='DRIVING_LICENSE').sum():,}),
+    Visa ({(df['data_type']=='VISA').sum():,})</p>
+    <p><strong>KYC checks performed:</strong> Usability (root) → Extraction → Image Checks →
+    Data Checks / Watchlist Screening; Liveness and Similarity run in parallel off Usability.
+    See Section 3 for the full dependency graph.</p>
   </div>
 </div>
 </div>
 """)
 
 # ─── Failure Funnel ──────────────────────────────────────────────────────────
-n_incomplete = fail_counts.get("incomplete_submission", 0)
-n_usability  = fail_counts.get("usability_decision", 0)
-n_image      = fail_counts.get("image_checks_decision", 0)
-n_liveness   = fail_counts.get("liveness_decision", 0)
-n_similarity = fail_counts.get("similarity_decision", 0)
-n_datachecks = fail_counts.get("data_checks_decision", 0)
-
 h(f"""<div class="page">
 <h2 id="failure-funnel">3. Failure Funnel Analysis</h2>
 <div class="section-intro">
-  Each KYC attempt passes through a sequential pipeline of checks. When a check fails, downstream
-  checks are typically not executed. This section attributes each rejection to the <em>first</em>
-  check that caused it.
+  The Jumio KYC pipeline is <strong>not a simple linear sequence</strong> — it is a dependency
+  graph. Usability is the root check. Liveness and Similarity run in parallel off Usability and
+  are independent of the document chain. Image Checks and Data Checks depend on both Usability
+  and Extraction completing successfully.
 </div>
+
+<h3>Check dependency graph</h3>
+<div class="chart-box">{img_tag(CHART_DAG)}</div>
+
+<h3>Root cause of rejections</h3>
 <div class="chart-box">{img_tag(CHART_FAIL_CHECK)}</div>
 
 <h3>Key observations</h3>
 <div class="finding red no-break">
-  <strong>Incomplete submissions — {n_incomplete:,} rejections ({n_incomplete/n_rejected*100:.1f}% of all rejections)</strong>
-  These users pass (or partially pass) usability but the image-check pipeline returns NOT_EXECUTED,
-  blocking all downstream checks. This is the single largest rejection category and is highly
-  actionable — see Recommendations.
+  <strong>Pipeline blockages — {n_pipeline_blocked:,} rejections ({n_pipeline_blocked/n_rejected*100:.1f}% of all rejections)</strong>
+  These users were not rejected because a check explicitly failed — the pipeline itself stalled.
+  <ul style="margin:8px 0 0 18px;font-size:13px;">
+    <li><strong>Extraction blocked ({n_extraction_blocked:,}):</strong> Usability passed but Extraction never ran, halting Image Checks, Data Checks, and Watchlist Screening.</li>
+    <li><strong>Usability WARNING cascaded ({n_usability_warn:,}):</strong> A usability warning (e.g. blurred image) was treated as a hard blocker for Extraction.</li>
+    <li><strong>Usability not executed ({n_usability_noexec:,}):</strong> The root check itself did not run.</li>
+  </ul>
 </div>
 <div class="finding red no-break">
   <strong>Similarity failures — {n_similarity:,} rejections ({n_similarity/n_rejected*100:.1f}%)</strong>
-  The selfie does not match the document photo. This can be caused by poor selfie quality,
-  lighting, or genuine identity fraud attempts.
+  Selfie does not match the document photo. Similarity depends on Usability only for face
+  detectability, so it runs independently of the document chain.
 </div>
 <div class="finding amber no-break">
   <strong>Liveness failures — {n_liveness:,} rejections ({n_liveness/n_rejected*100:.1f}%)</strong>
-  The system cannot confirm the user is live (not a photo or video replay). The most common
-  reason is UNDETERMINED — suggesting a UX or connectivity issue rather than spoofing.
+  The system cannot confirm the user is live. Liveness is independent of the document chain —
+  it runs on the selfie as soon as Usability passes. The most common cause is UNDETERMINED,
+  suggesting connectivity or UX issues rather than spoofing.
 </div>
 <div class="finding amber no-break">
   <strong>Image check failures — {n_image:,} rejections ({n_image/n_rejected*100:.1f}%)</strong>
@@ -609,8 +763,9 @@ h(f"""<div class="page">
   or digital copies ({image_reasons.get('DIGITAL_COPY', 0):,} cases).
 </div>
 <div class="finding amber no-break">
-  <strong>Usability failures — {n_usability:,} rejections ({n_usability/n_rejected*100:.1f}%)</strong>
-  The document image is of insufficient quality for processing (blurry, glare, wrong document type, etc.).
+  <strong>Usability hard rejections — {n_usability:,} rejections ({n_usability/n_rejected*100:.1f}%)</strong>
+  The document image could not be processed at all (wrong document type, not uploaded, etc.).
+  A usability rejection blocks the entire document chain.
 </div>
 </div>
 """)
@@ -680,7 +835,7 @@ h(f"""<div class="page">
     <p>Passports achieve the highest pass rate (<strong>96.4%</strong>) followed by Visas (95.8%).
     ID Cards (92.6%) and Driving Licenses (89.5%) perform below the overall average.</p>
     <p>However, document volumes tell a different story: ID Cards account for
-    <strong>{(details['data_type']=='ID_CARD').sum():,} attempts ({(details['data_type']=='ID_CARD').sum()/total*100:.0f}%)</strong>
+    <strong>{(df['data_type']=='ID_CARD').sum():,} attempts ({(df['data_type']=='ID_CARD').sum()/total*100:.0f}%)</strong>
     of all attempts, making it the critical document type to optimise.</p>
     <h3>Sub-type variation</h3>
     <p>Within ID Cards, there is significant variation by sub-type — particularly in Mexico
@@ -693,10 +848,10 @@ h(f"""<div class="page">
 """)
 
 # ─── Country Analysis ──────────────────────────────────────────────────────────
-mex_total = (details["data_issuing_country"] == "MEX").sum()
-arg_total = (details["data_issuing_country"] == "ARG").sum()
-mex_pass  = (details[details["data_issuing_country"]=="MEX"]["decision_label"]=="PASSED").sum()
-arg_pass  = (details[details["data_issuing_country"]=="ARG"]["decision_label"]=="PASSED").sum()
+mex_total = (df["data_issuing_country"] == "MEX").sum()
+arg_total = (df["data_issuing_country"] == "ARG").sum()
+mex_pass  = (df[df["data_issuing_country"]=="MEX"]["decision_type"]=="PASSED").sum()
+arg_pass  = (df[df["data_issuing_country"]=="ARG"]["decision_type"]=="PASSED").sum()
 
 h(f"""<div class="page">
 <h2 id="country">6. Country Analysis</h2>
@@ -780,12 +935,14 @@ h("""</table>
 # ─── Recommendations ──────────────────────────────────────────────────────────
 recommendations = [
     (
-        "Investigate and fix incomplete submission rejections",
-        f"{n_incomplete:,} rejections ({n_incomplete/n_rejected*100:.0f}% of all rejections) occurred because the image "
-        "pipeline could not execute — not because of a genuine failure. "
-        "Diagnose whether this is caused by upload failures, unsupported file formats, or vendor timeouts. "
-        "Implement retry logic, clearer upload error messages, and pre-submission image quality checks in the app. "
-        f"Recovering even 50% of these cases would add ~{int(n_incomplete*0.5):,} passed users."
+        "Diagnose and fix pipeline blockages (Extraction not executing)",
+        f"{n_pipeline_blocked:,} rejections ({n_pipeline_blocked/n_rejected*100:.0f}% of all rejections) occurred because "
+        "the Extraction check never ran — not because of a genuine verification failure. "
+        "The three sub-causes are: Extraction blocked despite Usability passing "
+        f"({n_extraction_blocked:,}), Usability WARNING cascading downstream ({n_usability_warn:,}), "
+        f"and Usability not executing at all ({n_usability_noexec:,}). "
+        "Investigate vendor API timeouts, upload failures, and whether Usability WARNINGs should truly block Extraction. "
+        f"Recovering even 50% of these cases would add ~{int(n_pipeline_blocked*0.5):,} passed users."
     ),
     (
         "Guide Mexican users toward Electoral IDs",
@@ -795,7 +952,7 @@ recommendations = [
     ),
     (
         "Introduce a guided retry flow for liveness failures",
-        f"Of the {(details['liveness_decision']=='REJECTED').sum():,} liveness rejections, "
+        f"Of the {(df['liveness_decision']=='REJECTED').sum():,} liveness rejections, "
         f"{liveness_reasons.get('liveness_UNDETERMINED',0):,} are UNDETERMINED — meaning the system "
         "could not reach a conclusion, not that the user failed. "
         "These users should be prompted to retry in better lighting conditions rather than being hard-rejected."
@@ -808,7 +965,7 @@ recommendations = [
     ),
     (
         "Review watchlist warning handling",
-        f"{(details['watchlist_screening_decision']=='WARNING').sum()} users triggered a watchlist warning but "
+        f"{(df['watchlist_screening_decision']=='WARNING').sum()} users triggered a watchlist warning but "
         "<strong>all 69 were marked as PASSED</strong>. Confirm with compliance that this is intentional "
         "and that a manual review process exists for these cases."
     ),
