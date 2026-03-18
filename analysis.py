@@ -777,8 +777,8 @@ h("""<div class="page">
 # ─── Objective ────────────────────────────────────────────────────────────────
 h("""<div class="page">
 <h2 id="objective">1. Objective</h2>
-  Identify opportunities for improvement in ARQ's KYC process (as of September 2023) 
-  and propose actionable solutions.
+  Identify issues and inefficiencies in ARQ's KYC process (as of September 2023) 
+  and propose actionable improvements.
 </p>
 </div>
 """)
@@ -941,12 +941,12 @@ h("""<div class="page">
 <table>
   <tr><th>Area</th><th>Limitation / Assumption</th></tr>
   <tr><td><strong>Retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
-  <tr><td><strong>Workflow anomalies</strong></td><td>For 201 users their usability check appears as not executed while at the same time the downstream checks have all passed. These may be users that have used a different workflow not shown on the dataset or, more likely, a data error.</td></tr>
+  <tr><td><strong>Workflow anomalies</strong></td><td>For 201 users, their usability check appears as not executed while at the same time the downstream checks have all passed. These may be users that have used a different workflow not shown on the dataset or, more likely, a data error.</td></tr>
   <tr><td><strong>Manual override policy</strong></td><td>4 users appear as <code>APPROVED</code> in the data. The exact difference between that label and <code>PASSED</code> is unclear — <code>APPROVED</code> may represent a manual decision and <code>PASSED</code> an automated one.</td></tr>
   <tr><td><strong>Liveness issue in usability check </strong></td><td>278 users show a liveness related failure in the usability check which is not expected as per Jumio's API documentation. This could reflect a pipeline bug or API change. We have assumed for these cases that the failure occurred at the liveness check stage and not at the usability one.</td></tr>
   <tr><td><strong>API version drift</strong></td><td>The dataset is from 2023; the Jumio documentation used reflects the current API (2026). Some label names or decision behaviours may have changed. This introduces a risk of the data being misinterpreted.</td></tr>
   <tr><td><strong>Time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
-  <tr><td><strong>Dataset consistency</strong></td><td>1 user appears as <code>PASSED</code> in KYC_Summary but <code>REJECTED</code> in KYC_Details. The authoritative source for this record is unclear.</td></tr>
+  <tr><td><strong>Dataset consistency</strong></td><td>1 user appears as <code>PASSED</code> in KYC_Summary but <code>REJECTED</code> in KYC_Details. The authoritative source for this record is unclear but we have decided to use KYC_Summary.</td></tr>
   <tr><td><strong>Colombia missing</strong></td><td>According to ARQ's website in July 2023, ARQ was live in Colombia (this can be seen using Wayback Machine). However, no records of Colombian users appear in the data set. At the time the company was known as DolarApp.</td></tr>
 </table>
 </div>
@@ -955,6 +955,9 @@ h("""<div class="page">
 # ─── Analysis wrapper ──────────────────────────────────────────────────────────
 h("""<div class="page">
 <h2 id="analysis">5. Analysis</h2>
+  <div class="section-intro">
+  Chain of reasoning that led to the findings and recommendations.
+</div>
 </div>
 """)
 
@@ -971,19 +974,18 @@ h(f"""<div class="page">
   <div class="chart-box">{img_tag(CHART_DONUT)}</div>
   <div>
     <h3>About the data</h3>
-    <p>Two datasets were provided: <strong>KYC_Summary</strong> (one row per attempt with date and
+    <p>Two datasets analysed: <strong>KYC_Summary</strong> (one row per attempt with date and
     outcome) and <strong>KYC_Details</strong> (one row per attempt with the result of each
     individual check). Both contain {total:,} unique user references with no duplicates.</p>
     <p><strong>Date range:</strong> {date_min} – {date_max} ({(summary['date'].max()-summary['date'].min()).days} days)</p>
-    <p><strong>Countries:</strong> Mexico (MEX) — {(df['data_issuing_country']=='MEX').sum():,} attempts &nbsp;|&nbsp;
-    Argentina (ARG) — {(df['data_issuing_country']=='ARG').sum():,} attempts</p>
+    <p><strong>Countries:</strong> Mexico (MEX) - {(df['data_issuing_country']=='MEX').sum():,} attempts &nbsp;|&nbsp;
+    Argentina (ARG) - {(df['data_issuing_country']=='ARG').sum():,} attempts</p>
     <p><strong>Document types:</strong> ID Card ({(df['data_type']=='ID_CARD').sum():,}),
     Passport ({(df['data_type']=='PASSPORT').sum():,}),
     Driving License ({(df['data_type']=='DRIVING_LICENSE').sum():,}),
     Visa ({(df['data_type']=='VISA').sum():,})</p>
-    <p><strong>KYC checks performed:</strong> Usability (root) → Extraction → Image Checks →
-    Data Checks / Watchlist Screening; Liveness and Similarity run in parallel off Usability.
-    See Section 3 for the full dependency graph.</p>
+    <p><strong>KYC checks performed:</strong> Usability, Extraction, Image Checks,
+    Data Checks / Watchlist Screening, Liveness, Similarity.</p>
   </div>
 </div>
 </div>
