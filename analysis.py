@@ -168,6 +168,11 @@ weekly["total"] = weekly.sum(axis=1)
 weekly["rejection_rate"] = weekly["REJECTED"] / weekly["total"] * 100
 weekly.index = [str(p) for p in weekly.index]
 
+# Pre-compute spike/baseline variables used in multiple sections
+spike_weeks   = ["2023-08-21/2023-08-27", "2023-08-28/2023-09-03"]
+spike_rates   = [weekly.loc[w, "rejection_rate"] for w in spike_weeks if w in weekly.index]
+baseline_rate = weekly["rejection_rate"].iloc[:4].mean()
+
 # ── Pass rate by doc type ────────────────────────────────────────────────────
 doc_stats = df.groupby("data_type").apply(
     lambda g: pd.Series({
@@ -659,12 +664,59 @@ tr:nth-child(even) td { background: #F9FAFB; }
 .rec-body p { font-size: 13px; margin: 0; }
 .toc { margin: 32px 0; }
 .toc a { display: block; padding: 6px 0; color: #1A4FBA; text-decoration: none; font-size: 15px; }
+.toc a.toc-sub { padding: 3px 0 3px 20px; font-size: 13.5px; color: #6B7280; }
 .toc a:hover { text-decoration: underline; }
 .section-intro { background: #F9FAFB; border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; font-size: 13.5px; color: #374151; line-height: 1.7; }
+.fr-pair {
+  border: 1px solid #E5E7EB;
+  border-radius: 10px;
+  overflow: hidden;
+  margin: 24px 0;
+}
+.fr-finding {
+  padding: 18px 22px;
+  background: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+}
+.fr-finding .fr-label {
+  display: inline-block;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #1A4FBA;
+  background: #EFF6FF; border-radius: 4px;
+  padding: 2px 8px; margin-bottom: 8px;
+}
+.fr-finding strong { display: block; font-size: 14.5px; color: #0D2A6B; margin-bottom: 6px; }
+.fr-finding p { font-size: 13px; margin: 0; color: #374151; }
+.fr-rec {
+  padding: 18px 22px;
+  background: #F0FDF4;
+  border-left: 4px solid #22C55E;
+}
+.fr-rec .fr-label {
+  display: inline-block;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #15803D;
+  background: #DCFCE7; border-radius: 4px;
+  padding: 2px 8px; margin-bottom: 8px;
+}
+.fr-rec strong { display: block; font-size: 14.5px; color: #14532D; margin-bottom: 6px; }
+.fr-rec p { font-size: 13px; margin: 0; color: #374151; }
+.placeholder {
+  background: #F9FAFB; border: 2px dashed #D1D5DB;
+  border-radius: 8px; padding: 32px;
+  text-align: center; color: #9CA3AF; font-size: 14px;
+  margin: 24px 0;
+}
+.analysis-section { border-top: 1px solid #E5E7EB; padding-top: 16px; margin-top: 40px; }
+.analysis-section h3 {
+  font-size: 18px; font-weight: 700; color: #1A4FBA;
+  margin: 0 0 16px 0;
+}
 @media print {
   .cover { page-break-after: always; }
   h2 { page-break-before: auto; }
   .no-break { page-break-inside: avoid; }
+  .fr-pair { page-break-inside: avoid; }
   body { font-size: 12px; }
 }
 """
@@ -706,63 +758,209 @@ h(f"""<!DOCTYPE html>
 h("""<div class="page">
 <h2 id="toc">Table of Contents</h2>
 <div class="toc">
-  <a href="#executive-summary">1. Executive Summary</a>
-  <a href="#overview">2. Dataset Overview</a>
-  <a href="#failure-funnel">3. Failure Funnel Analysis</a>
-  <a href="#failure-reasons">4. Failure Reasons Deep Dive</a>
-  <a href="#document-type">5. Document Type Performance</a>
-  <a href="#country">6. Country Analysis</a>
-  <a href="#trends">7. Time Trends</a>
-  <a href="#data-quality">8. Data Quality Issues</a>
-  <a href="#recommendations">9. Recommendations</a>
+  <a href="#objective">1. Objective</a>
+  <a href="#findings-recommendations">2. Findings &amp; Recommendations</a>
+  <a href="#methodology">3. Methodology</a>
+  <a href="#limitations">4. Limitations &amp; Assumptions</a>
+  <a href="#analysis">5. Analysis</a>
+  <a href="#overview" class="toc-sub">5.1 Dataset Overview</a>
+  <a href="#failure-funnel" class="toc-sub">5.2 Failure Funnel Analysis</a>
+  <a href="#failure-reasons" class="toc-sub">5.3 Failure Reasons Deep Dive</a>
+  <a href="#document-type" class="toc-sub">5.4 Document Type Performance</a>
+  <a href="#country" class="toc-sub">5.5 Country Analysis</a>
+  <a href="#trends" class="toc-sub">5.6 Time Trends</a>
+  <a href="#data-quality" class="toc-sub">5.7 Data Quality Issues</a>
 </div>
 </div>
 """)
 
-# ─── Executive Summary ────────────────────────────────────────────────────────
-h(f"""<div class="page">
-<h2 id="executive-summary">1. Executive Summary</h2>
-<p>
-  ARQ's KYC pipeline processed <strong>{total:,} user verification attempts</strong> between {date_min} and {date_max},
-  achieving an overall pass rate of <strong>{pass_rate:.1f}%</strong>. While the majority of users pass without friction,
-  the analysis surfaces three material inefficiencies and several data quality issues that together
-  represent a meaningful opportunity to improve conversion and reduce operational risk.
+# ─── Objective ────────────────────────────────────────────────────────────────
+h("""<div class="page">
+<h2 id="objective">1. Objective</h2>
+  Identify opportunities for improvement in ARQ's KYC process (as of September 2023) 
+  and propose actionable solutions.
 </p>
+</div>
+""")
 
-<div class="finding red no-break">
-  <strong>Finding 1 — Pipeline blockages account for the largest rejection category</strong>
-  {pct(n_pipeline_blocked, n_rejected)} of all rejections occur because the Extraction check never ran,
-  stalling all downstream document checks. These are not genuine verification failures —
-  they are infrastructure or UX problems and represent the highest-impact improvement opportunity.
+# ─── Findings & Recommendations ───────────────────────────────────────────────
+h(f"""<div class="page">
+<h2 id="findings-recommendations">2. Findings &amp; Recommendations</h2>
+<div class="section-intro">
+  Each finding is paired with a specific recommendation. Findings are ordered by estimated
+  business impact.
 </div>
 
-<div class="finding amber no-break">
-  <strong>Finding 2 — A 10-point pass-rate gap exists between Argentina (92.1%) and Mexico (81.5%)</strong>
-  Mexican users are disproportionately rejected. The gap is partly explained by MEX National ID having
-  an 89.3% pass rate vs. Electoral ID at 95.8% — suggesting document-guidance improvements could
-  close this gap significantly.
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 1 — Conversion</span>
+    <strong>Pipeline blockages account for {n_pipeline_blocked/n_rejected*100:.0f}% of all rejections</strong>
+    <p>{pct(n_pipeline_blocked, n_rejected)} of rejections occurred because the Extraction check never ran,
+    stalling all downstream document checks. These are not genuine verification failures —
+    they are infrastructure or UX problems. Sub-causes: Extraction blocked despite Usability passing
+    ({n_extraction_blocked:,}), Usability WARNING cascading downstream ({n_usability_warn:,}),
+    and Usability not executing at all ({n_usability_noexec:,}).</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Diagnose and fix pipeline blockages</strong>
+    <p>Investigate vendor API timeouts, upload failures, and whether Usability WARNINGs should
+    truly block Extraction. Implement retry logic and pre-submission image quality checks in-app.
+    Recovering 50% of these cases would add ~{int(n_pipeline_blocked*0.5):,} passed users.</p>
+  </div>
 </div>
 
-<div class="finding amber no-break">
-  <strong>Finding 3 — Rejection rate nearly doubled during Aug 21 – Sep 3</strong>
-  The weekly rejection rate spiked from a baseline of ~10–11% to 16–19% during this two-week window,
-  then partially recovered. The root cause is unknown from the data alone and warrants investigation
-  with the vendor.
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 2 — Conversion</span>
+    <strong>Mexico's pass rate (81.5%) trails Argentina (92.1%) by 10.6 percentage points</strong>
+    <p>Mexican users are disproportionately rejected. The gap is partly driven by MEX National ID
+    having an 89.3% pass rate vs. Electoral ID at 95.8% — a 6.5pp difference within the same market.
+    UNSUPPORTED_DOCUMENT_TYPE (509 usability WARNINGs) also suggests users are submitting
+    unsupported document types that could be intercepted earlier.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Guide Mexican users toward Electoral IDs and add a document type selector</strong>
+    <p>Add in-app guidance recommending Electoral ID as the preferred document for Mexican users.
+    Introduce a document type selector before the capture step to prevent unsupported documents
+    from reaching the pipeline at all.</p>
+  </div>
 </div>
 
-<div class="finding red no-break">
-  <strong>Finding 4 — 69 users matched a sanctions/PEP watchlist and all were passed</strong>
-  Per Jumio documentation, a Watchlist WARNING (label: ALERT) means the user was found on a global
-  or regional sanctions list or is a Politically Exposed Person. All 69 matches received an overall
-  PASSED outcome. It is unclear from the data whether a manual review process exists for these cases.
-  This warrants immediate clarification with the compliance team.
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 3 — Conversion</span>
+    <strong>{liveness_reasons.get('liveness_UNDETERMINED',0):,} liveness rejections are non-conclusive</strong>
+    <p>Of {(df['liveness_decision']=='REJECTED').sum():,} liveness rejections, {liveness_reasons.get('liveness_UNDETERMINED',0):,}
+    are <code>LIVENESS_UNDETERMINED</code> — per Jumio docs this means the system could not reach a
+    confident verdict, not that the user failed. These are almost always caused by poor lighting,
+    glasses, or partial face visibility rather than spoofing attempts.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Introduce a guided retry flow for LIVENESS_UNDETERMINED</strong>
+    <p>Instead of hard-rejecting these users, prompt them to retry with specific guidance
+    (better lighting, remove glasses, ensure full face is visible). This distinction
+    between UNDETERMINED and hard fraud signals (e.g. ID_USED_AS_SELFIE) should
+    drive different user flows.</p>
+  </div>
 </div>
+
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 4 — Operations</span>
+    <strong>Rejection rate nearly doubled during Aug 21 – Sep 3</strong>
+    <p>The weekly rejection rate spiked from a baseline of ~{baseline_rate:.1f}% to
+    {max(spike_rates):.1f}% during this two-week window, then partially recovered
+    but remained above baseline through the end of the observation period. The root
+    cause is not identifiable from the dataset alone.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Investigate the root cause of the spike with Jumio</strong>
+    <p>Cross-reference with Jumio SLA/incident reports, marketing campaign dates,
+    and app release history. Hypotheses to test: vendor degradation, new user
+    acquisition batch, increased fraud volume, or a UI change in the capture flow.</p>
+  </div>
+</div>
+
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 5 — Compliance</span>
+    <strong>69 users matched a sanctions/PEP watchlist and all were passed</strong>
+    <p>Per Jumio docs, a Watchlist WARNING carries the label <strong>ALERT</strong>, meaning
+    the user was found on one or more global or regional sanctions lists or is a
+    Politically Exposed Person. All 69 matches received an overall PASSED outcome.
+    It is unclear from the data whether a manual review process exists for these cases.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Establish a documented manual review process for watchlist ALERT matches</strong>
+    <p>Confirm with the compliance team that each ALERT match is individually reviewed,
+    that a documented decision rationale exists, and that the current pass-through
+    policy is explicitly approved by compliance leadership.</p>
+  </div>
+</div>
+
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 6 — Compliance</span>
+    <strong>Manual overrides lack a documented policy</strong>
+    <p>1 user was manually APPROVED despite <code>similarity=NO_MATCH</code> — their selfie
+    did not match their ID. 2 users with <code>liveness=REJECTED</code> (LIVENESS_UNDETERMINED)
+    received an overall PASSED. There is no evidence in the data of a formal override policy
+    or audit trail for these decisions.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Audit and formalise manual override decisions</strong>
+    <p>Each manual override should have a documented rationale, an authorised approver, and
+    be logged for audit purposes. If LIVENESS_UNDETERMINED is intentionally treated as
+    non-blocking, this policy should be formalised in writing with compliance sign-off.</p>
+  </div>
+</div>
+
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 7 — Data Quality</span>
+    <strong>Multiple data quality issues indicate gaps in pipeline validation</strong>
+    <p>Non-standard decision labels (OK, APPROVED, PASSES), inconsistent label casing
+    (<code>liveness_UNDETERMINED</code> vs <code>LIVENESS_UNDETERMINED</code>), and
+    implausible age values suggest the data pipeline lacks schema validation and
+    output contracts with the vendor.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Enforce data quality at the pipeline level</strong>
+    <p>Add schema validation to reject non-standard label values in real time.
+    Define and enforce a data contract with Jumio covering all expected field
+    values, ensuring analytics remain reliable as the API evolves.</p>
+  </div>
+</div>
+
+</div>
+""")
+
+# ─── Methodology ──────────────────────────────────────────────────────────────
+h("""<div class="page">
+<h2 id="methodology">3. Methodology</h2>
+<div class="placeholder">
+  [ To be completed ]
+</div>
+</div>
+""")
+
+# ─── Limitations & Assumptions ────────────────────────────────────────────────
+h("""<div class="page">
+<h2 id="limitations">4. Limitations &amp; Assumptions</h2>
+<div class="section-intro">
+  The following limitations and open questions were identified during the analysis.
+  They do not invalidate the findings but should be considered when acting on recommendations.
+</div>
+<table>
+  <tr><th>Area</th><th>Limitation / Assumption</th></tr>
+  <tr><td><strong>Retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
+  <tr><td><strong>Workflow anomalies</strong></td><td>For 201 users their usability check appears as not executed while at the same time the downstream checks have all passed. These may be users that have used a different workflow not shown on the dataset or, more likely, a data error.</td></tr>
+  <tr><td><strong>Manual override policy</strong></td><td>4 users appear as <code>APPROVED</code> in the data. The exact difference between that label and <code>PASSED</code> is unclear — <code>APPROVED</code> may represent a manual decision and <code>PASSED</code> an automated one.</td></tr>
+  <tr><td><strong>Liveness issue in usability check </strong></td><td>278 users show a liveness related failure in the usability check which is not expected as per Jumio's API documentation. This could reflect a pipeline bug or API change. We have assumed for these cases that the failure occurred at the liveness check stage and not at the usability one.</td></tr>
+  <tr><td><strong>API version drift</strong></td><td>The dataset is from 2023; the Jumio documentation used reflects the current API (2026). Some label names or decision behaviours may have changed. This introduces a risk of the data being misinterpreted.</td></tr>
+  <tr><td><strong>Time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
+  <tr><td><strong>Dataset consistency</strong></td><td>1 user appears as <code>PASSED</code> in KYC_Summary but <code>REJECTED</code> in KYC_Details. The authoritative source for this record is unclear.</td></tr>
+  <tr><td><strong>Colombia missing</strong></td><td>According to ARQ's website in July 2023, ARQ was live in Colombia (this can be seen using Wayback Machine). However, no records of Colombian users appear in the data set. At the time the company was known as DolarApp.</td></tr>
+</table>
+</div>
+""")
+
+# ─── Analysis wrapper ──────────────────────────────────────────────────────────
+h("""<div class="page">
+<h2 id="analysis">5. Analysis</h2>
 </div>
 """)
 
 # ─── Overview ─────────────────────────────────────────────────────────────────
 h(f"""<div class="page">
-<h2 id="overview">2. Dataset Overview</h2>
+<h2 id="overview">5.1 Dataset Overview</h2>
 <div class="kpi-grid">
   {kpi_card(f"{total:,}", "Total KYC Attempts")}
   {kpi_card(f"{pass_rate:.1f}%", "Overall Pass Rate", "green")}
@@ -793,7 +991,7 @@ h(f"""<div class="page">
 
 # ─── Failure Funnel ──────────────────────────────────────────────────────────
 h(f"""<div class="page">
-<h2 id="failure-funnel">3. Failure Funnel Analysis</h2>
+<h2 id="failure-funnel">5.2 Failure Funnel Analysis</h2>
 <div class="section-intro">
   The Jumio KYC pipeline is <strong>not a simple linear sequence</strong> — it is a dependency
   graph. Usability is the root check. Liveness and Similarity run in parallel off Usability and
@@ -843,7 +1041,7 @@ h(f"""<div class="page">
 
 # ─── Failure Reasons ──────────────────────────────────────────────────────────
 h(f"""<div class="page">
-<h2 id="failure-reasons">4. Failure Reasons Deep Dive</h2>
+<h2 id="failure-reasons">5.3 Failure Reasons Deep Dive</h2>
 <div class="section-intro">
   Drilling into the <em>details</em> columns reveals the specific error codes behind each check
   failure, enabling targeted interventions.
@@ -905,7 +1103,7 @@ h(f"""<div class="page">
 
 # ─── Document Type ───────────────────────────────────────────────────────────
 h(f"""<div class="page">
-<h2 id="document-type">5. Document Type Performance</h2>
+<h2 id="document-type">5.4 Document Type Performance</h2>
 <div class="chart-row">
   <div class="chart-box">{img_tag(CHART_DOC_TYPE)}</div>
   <div>
@@ -932,7 +1130,7 @@ mex_pass  = (df[df["data_issuing_country"]=="MEX"]["decision_type"]=="PASSED").s
 arg_pass  = (df[df["data_issuing_country"]=="ARG"]["decision_type"]=="PASSED").sum()
 
 h(f"""<div class="page">
-<h2 id="country">6. Country Analysis</h2>
+<h2 id="country">5.5 Country Analysis</h2>
 <div class="section-intro">
   The dataset covers two markets: Mexico ({mex_total:,} attempts, {mex_total/total*100:.0f}%)
   and Argentina ({arg_total:,} attempts, {arg_total/total*100:.0f}%). There is a
@@ -957,12 +1155,8 @@ h(f"""<div class="page">
 """)
 
 # ─── Time Trends ──────────────────────────────────────────────────────────────
-spike_weeks = ["2023-08-21/2023-08-27", "2023-08-28/2023-09-03"]
-spike_rates = [weekly.loc[w, "rejection_rate"] for w in spike_weeks if w in weekly.index]
-baseline_rate = weekly["rejection_rate"].iloc[:4].mean()
-
 h(f"""<div class="page">
-<h2 id="trends">7. Time Trends</h2>
+<h2 id="trends">5.6 Time Trends</h2>
 <div class="section-intro">
   Monitoring the rejection rate over time reveals a significant anomaly in late August / early September
   that warrants investigation.
@@ -988,7 +1182,7 @@ h(f"""<div class="page">
 
 # ─── Data Quality ────────────────────────────────────────────────────────────
 h("""<div class="page">
-<h2 id="data-quality">8. Data Quality Issues</h2>
+<h2 id="data-quality">5.7 Data Quality Issues</h2>
 <div class="section-intro">
   Several data quality issues were identified in the dataset. While most are minor, they can
   affect downstream analytics and should be addressed at the pipeline level.
@@ -1012,80 +1206,7 @@ h("""</table>
 </div>
 """)
 
-# ─── Recommendations ──────────────────────────────────────────────────────────
-recommendations = [
-    (
-        "Diagnose and fix pipeline blockages (Extraction not executing)",
-        f"{n_pipeline_blocked:,} rejections ({n_pipeline_blocked/n_rejected*100:.0f}% of all rejections) occurred because "
-        "the Extraction check never ran — not because of a genuine verification failure. "
-        "The three sub-causes are: Extraction blocked despite Usability passing "
-        f"({n_extraction_blocked:,}), Usability WARNING cascading downstream ({n_usability_warn:,}), "
-        f"and Usability not executing at all ({n_usability_noexec:,}). "
-        "Investigate vendor API timeouts, upload failures, and whether Usability WARNINGs should truly block Extraction. "
-        f"Recovering even 50% of these cases would add ~{int(n_pipeline_blocked*0.5):,} passed users."
-    ),
-    (
-        "Guide Mexican users toward Electoral IDs",
-        "Electoral IDs pass at 95.8% vs. National IDs at 89.3% in Mexico. "
-        "Add in-app guidance recommending Electoral ID as the preferred document. "
-        "This is a low-effort UX change with a measurable impact on MEX pass rates."
-    ),
-    (
-        "Introduce a guided retry flow for liveness failures",
-        f"Of the {(df['liveness_decision']=='REJECTED').sum():,} liveness rejections, "
-        f"{liveness_reasons.get('liveness_UNDETERMINED',0):,} are <code>LIVENESS_UNDETERMINED</code> — "
-        "per Jumio docs this means the system could not reach a confident verdict, not that the user "
-        "failed liveness. These users should be prompted to retry (better lighting, no glasses, full face "
-        "visible) rather than being hard-rejected."
-    ),
-    (
-        "Investigate the Aug 21 – Sep 3 rejection spike",
-        f"The rejection rate nearly doubled during this period (from {baseline_rate:.1f}% to "
-        f"{max(spike_rates):.1f}%). Cross-reference with vendor SLA reports, marketing campaigns, "
-        "and app release history to identify the root cause and prevent recurrence."
-    ),
-    (
-        "Establish a manual review process for watchlist ALERT matches",
-        f"Per Jumio documentation, a Watchlist WARNING decision means the label is <strong>ALERT</strong> — "
-        f"the user was found on one or more sanctions or PEP (Politically Exposed Person) watchlists. "
-        f"{(df['watchlist_screening_decision']=='WARNING').sum()} users matched a watchlist and all "
-        f"received an overall PASSED outcome. Confirm with the compliance team that a documented manual "
-        "review process exists for these cases, that each match is being assessed individually, and that "
-        "the business is comfortable with the current pass-through policy."
-    ),
-    (
-        "Audit and document manual override decisions",
-        "1 user was manually APPROVED despite <code>similarity=NO_MATCH</code> — their selfie did not match their ID. "
-        "Additionally, 2 users with <code>liveness=REJECTED</code> (LIVENESS_UNDETERMINED) received an overall PASSED. "
-        "Each manual override should have a documented rationale, an authorised approver, and be logged for audit purposes. "
-        "If LIVENESS_UNDETERMINED is intentionally treated as non-blocking, this policy should be formalised in writing."
-    ),
-    (
-        "Enforce data quality at the pipeline level",
-        "Add schema validation to reject non-standard label values (OK, APPROVED, PASSES) and "
-        "flag misrouted fields (liveness values in usability columns) in real time. "
-        "This ensures analytics remain reliable as the pipeline evolves."
-    ),
-]
-
-h("""<div class="page">
-<h2 id="recommendations">9. Recommendations</h2>
-<div class="section-intro">
-  Recommendations are ordered by estimated impact. Items 1–3 are high-priority and can be
-  addressed within a single sprint; items 4–6 require cross-functional coordination.
-</div>
-""")
-for i, (title, body) in enumerate(recommendations, 1):
-    h(f"""<div class="rec no-break">
-  <div class="rec-num">{i}</div>
-  <div class="rec-body">
-    <strong>{title}</strong>
-    <p>{body}</p>
-  </div>
-</div>""")
-
-h("""</div>
-</body>
+h("""</body>
 </html>
 """)
 
