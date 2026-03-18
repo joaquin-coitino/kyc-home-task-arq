@@ -195,17 +195,25 @@ sub_stats["pass_rate"] = sub_stats["passed"] / sub_stats["total"] * 100
 sub_stats = sub_stats[sub_stats["total"] >= 50]
 
 # ── Failure reason breakdowns ─────────────────────────────────────────────────
-def top_reasons(col_decision, col_details, exclude=("OK", "PRECONDITION_NOT_FULFILLED"), top=6):
-    mask = df[col_decision].isin(["REJECTED", "WARNING"])
+def reasons_by_decision(col_decision, col_details, decision_type,
+                         exclude=("OK", "PRECONDITION_NOT_FULFILLED"), top=8):
+    """Return top detail labels for a specific check decision (REJECTED or WARNING)."""
+    mask = df[col_decision] == decision_type
     result = df[mask][col_details].value_counts()
     result = result[~result.index.isin(exclude)]
     return result.head(top)
 
-usability_reasons  = top_reasons("usability_decision",    "usability_decision_details")
-image_reasons      = top_reasons("image_checks_decision", "image_checks_decision_details")
-liveness_reasons   = top_reasons("liveness_decision",     "liveness_decision_details")
-similarity_reasons = top_reasons("similarity_decision",   "similarity_decision_details",
-                                  exclude=("OK", "PRECONDITION_NOT_FULFILLED", "MATCH"))
+# Usability split by check decision
+usability_rejected_reasons = reasons_by_decision(
+    "usability_decision", "usability_decision_details", "REJECTED")
+usability_warning_reasons  = reasons_by_decision(
+    "usability_decision", "usability_decision_details", "WARNING",
+    exclude=("OK", "PRECONDITION_NOT_FULFILLED", "liveness_UNDETERMINED"))  # exclude misrouted liveness label
+
+image_reasons      = reasons_by_decision("image_checks_decision", "image_checks_decision_details", "REJECTED")
+liveness_reasons   = reasons_by_decision("liveness_decision",     "liveness_decision_details",     "REJECTED")
+similarity_reasons = reasons_by_decision("similarity_decision",   "similarity_decision_details",   "REJECTED",
+                                          exclude=("OK", "PRECONDITION_NOT_FULFILLED", "MATCH"))
 
 # ── Daily volume ──────────────────────────────────────────────────────────────
 daily = df.groupby("day")["decision_type"].value_counts().unstack(fill_value=0)
@@ -426,7 +434,25 @@ def reason_chart(series, title, color=FAIL_RED, figsize=(7, 3.5)):
     plt.tight_layout()
     return fig_to_b64(fig)
 
-CHART_USABILITY  = reason_chart(usability_reasons,  "Usability Failure Reasons", WARN_AMBER)
+# Usability: two side-by-side subplots — REJECTED reasons and WARNING reasons
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 4))
+
+for ax, series, label, color in [
+    (ax1, usability_rejected_reasons, "REJECTED reasons", FAIL_RED),
+    (ax2, usability_warning_reasons,  "WARNING reasons",  WARN_AMBER),
+]:
+    bars = ax.barh(series.index, series.values, color=color, edgecolor="none")
+    for bar in bars:
+        ax.text(bar.get_width() + 3, bar.get_y() + bar.get_height()/2,
+                f"{bar.get_width():,}", va="center", fontsize=9, color=GRAY)
+    ax.set_xlabel("Count")
+    ax.set_title(f"Usability — {label}", fontsize=11, fontweight="bold")
+
+plt.suptitle("Usability Check: Failure Reasons by Decision Type", fontsize=13,
+             fontweight="bold", color=BRAND_DARK, y=1.02)
+plt.tight_layout()
+CHART_USABILITY  = fig_to_b64(fig)
+
 CHART_IMAGE      = reason_chart(image_reasons,      "Image Check Failure Reasons", FAIL_RED)
 CHART_LIVENESS   = reason_chart(liveness_reasons,   "Liveness Failure Reasons", BRAND_BLUE)
 CHART_SIMILARITY = reason_chart(similarity_reasons, "Similarity Failure Reasons", BRAND_DARK)
@@ -456,23 +482,60 @@ CHART_SUBTYPE = fig_to_b64(fig)
 # DATA QUALITY summary table
 # ════════════════════════════════════════════════════════════════════════════
 dq_issues = [
-    ("Non-standard decision labels",
-     "12 rows use 'OK' (8) or 'APPROVED' (4) in <code>decision_label</code> instead of 'PASSED'.",
+    ("Incorrect label casing: liveness_UNDETERMINED",
+     "1,243 rows use <code>liveness_UNDETERMINED</code> (lowercase prefix) in "
+     "<code>liveness_decision_details</code>. Per Jumio docs the correct label is "
+     "<code>LIVENESS_UNDETERMINED</code> (all caps). The lowercase <code>liveness_</code> prefix "
+     "indicates the pipeline is prepending the check name to the label — a data pipeline bug.",
+     "Medium"),
+    ("liveness_UNDETERMINED in usability_decision_details",
+     "278 rows have <code>liveness_UNDETERMINED</code> in <code>usability_decision_details</code> "
+     "with <code>usability_decision=WARNING</code>. Since Usability covers both ID and Selfie "
+     "credentials, this most likely reflects the <strong>selfie credential</strong> failing usability "
+     "with a liveness-undetermined result — consistent with these rows also having "
+     "<code>liveness_decision=REJECTED</code>. Could also reflect an API label change since 2023. "
+     "Worth clarifying with Jumio whether the API separates usability results by credential type.",
+     "Low"),
+    ("Non-standard top-level decision labels",
+     "12 rows use <code>OK</code> (8) or <code>APPROVED</code> (4) in <code>decision_label</code> "
+     "instead of <code>PASSED</code>; 1 row has <code>PASSED</code> in "
+     "<code>usability_decision_details</code> instead of <code>OK</code>.",
      "Low"),
     ("Typo in check decisions",
-     "3 rows use 'PASSES' instead of 'PASSED' across <code>image_checks_decision</code>, "
-     "<code>extraction_decision</code>, <code>data_checks_decision</code>.",
+     "3 rows use <code>PASSES</code> instead of <code>PASSED</code> across "
+     "<code>image_checks_decision</code>, <code>extraction_decision</code>, "
+     "<code>data_checks_decision</code>.",
      "Low"),
-    ("Liveness value in wrong column",
-     "278 rows have 'liveness_UNDETERMINED' in <code>usability_decision_details</code> "
-     "instead of <code>liveness_decision_details</code>. These rows show WARNING in both columns.",
+    ("Missing watchlist screening for pipeline blockages",
+     f"2,889 rows have <code>NaN</code> in <code>watchlist_screening_decision</code> — all correspond "
+     "to cases where Extraction did not execute. Per Jumio docs, Watchlist Screening depends on "
+     "Usability, Extraction, and Image Checks, so this is expected — but it means these users "
+     "were never screened against sanctions/PEP lists before being rejected.",
      "Medium"),
-    ("Missing watchlist screening",
-     "2,889 rows have <code>NaN</code> in <code>watchlist_screening_decision</code> — "
-     "all correspond to incomplete submissions (image checks NOT_EXECUTED).",
+    ("decision_type vs decision_label mismatch",
+     "1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> "
+     "in KYC_Details — the two datasets are inconsistent for this record. "
+     "All individual checks passed except <code>liveness_decision=REJECTED</code> (LIVENESS_UNDETERMINED).",
      "Medium"),
+    ("PASSED overall with liveness=REJECTED",
+     "2 users have <code>liveness_decision=REJECTED</code> (LIVENESS_UNDETERMINED) but received "
+     "an overall PASSED decision. This may reflect a deliberate policy to treat LIVENESS_UNDETERMINED "
+     "as non-blocking — but if so, this policy should be documented and confirmed with compliance.",
+     "Medium"),
+    ("APPROVED despite similarity=NO_MATCH",
+     "1 user has <code>similarity_decision=REJECTED</code> (NO_MATCH) — selfie does not match ID — "
+     "but received a manual <code>APPROVED</code> override. Requires confirmation that this was "
+     "an intentional, documented compliance decision.",
+     "High"),
+    ("PASSED with usability=NOT_EXECUTED (NOT_UPLOADED) — 201 users",
+     "201 users have <code>usability_decision=NOT_EXECUTED</code> with detail <code>NOT_UPLOADED</code>, "
+     "yet all downstream checks (Extraction, Image Checks, Liveness, Similarity) passed. "
+     "This suggests a different verification workflow — possibly NFC or digital identity — "
+     "where the standard document upload is not required. Should be confirmed with Jumio.",
+     "Low"),
     ("Implausible ages",
-     "Some <code>year_birth</code> values produce ages of 1 or 114 — likely input errors.",
+     "Some <code>year_birth</code> values produce ages of 1 or 114 — likely input errors "
+     "during document capture or OCR extraction.",
      "Low"),
 ]
 
@@ -686,6 +749,14 @@ h(f"""<div class="page">
   then partially recovered. The root cause is unknown from the data alone and warrants investigation
   with the vendor.
 </div>
+
+<div class="finding red no-break">
+  <strong>Finding 4 — 69 users matched a sanctions/PEP watchlist and all were passed</strong>
+  Per Jumio documentation, a Watchlist WARNING (label: ALERT) means the user was found on a global
+  or regional sanctions list or is a Politically Exposed Person. All 69 matches received an overall
+  PASSED outcome. It is unclear from the data whether a manual review process exists for these cases.
+  This warrants immediate clarification with the compliance team.
+</div>
 </div>
 """)
 
@@ -783,9 +854,14 @@ h(f"""<div class="page">
     <h3>Usability Failures</h3>
     {img_tag(CHART_USABILITY)}
     <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
-      UNSUPPORTED_DOCUMENT_TYPE ({usability_reasons.get('UNSUPPORTED_DOCUMENT_TYPE',0):,}) and
-      MISSING_MANDATORY_DATAPOINTS ({usability_reasons.get('MISSING_MANDATORY_DATAPOINTS',0):,})
-      are the top causes. Both can be reduced with better in-app guidance before document capture.
+      On the <strong>REJECTED</strong> side, MISSING_MANDATORY_DATAPOINTS
+      ({usability_rejected_reasons.get('MISSING_MANDATORY_DATAPOINTS',0):,}) and image quality
+      issues (BLURRED, GLARE, MISSING_PAGE) are the main causes — all addressable with better
+      capture guidance in the app.
+      On the <strong>WARNING</strong> side, UNSUPPORTED_DOCUMENT_TYPE
+      ({usability_warning_reasons.get('UNSUPPORTED_DOCUMENT_TYPE',0):,}) dominates — users are
+      submitting a document type not supported by the workflow. This should be caught earlier
+      in the onboarding flow with a document type selector.
     </p>
   </div>
   <div class="chart-box">
@@ -805,10 +881,11 @@ h(f"""<div class="page">
     <h3>Liveness Failures</h3>
     {img_tag(CHART_LIVENESS)}
     <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
-      liveness_UNDETERMINED ({liveness_reasons.get('liveness_UNDETERMINED',0):,}) accounts for
-      the vast majority. UNDETERMINED means the system could not reach a confident verdict —
-      this is almost always a UX / connectivity issue, not spoofing. Retry flows would recover
-      most of these users.
+      <code>LIVENESS_UNDETERMINED</code> ({liveness_reasons.get('liveness_UNDETERMINED',0):,} rows, stored
+      as <code>liveness_UNDETERMINED</code> due to a pipeline naming bug) accounts for the vast majority.
+      Per Jumio docs, LIVENESS_UNDETERMINED means the system could not reach a confident verdict —
+      almost always a UX or connectivity issue, not a spoofing attempt. A guided retry flow
+      would recover most of these users.
     </p>
   </div>
   <div class="chart-box">
@@ -816,9 +893,10 @@ h(f"""<div class="page">
     {img_tag(CHART_SIMILARITY)}
     <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
       NO_MATCH ({similarity_reasons.get('NO_MATCH',0):,}) means the selfie and document photo
-      could not be matched. NOT_POSSIBLE ({similarity_reasons.get('NOT_POSSIBLE',0):,}) means
-      the check could not be performed — these users currently receive a WARNING outcome and
-      still pass, which may need review from a compliance perspective.
+      could not be matched — a hard rejection. NOT_POSSIBLE ({similarity_reasons.get('NOT_POSSIBLE',0):,})
+      means the comparison cannot be determined at all (per Jumio docs, this results in a WARNING,
+      not a rejection). These {similarity_reasons.get('NOT_POSSIBLE',0):,} users currently pass overall
+      without a confirmed face match — a potential compliance gap worth reviewing with the risk team.
     </p>
   </div>
 </div>
@@ -926,8 +1004,10 @@ for title, desc, level in dq_issues:
     h(f"  <tr><td><strong>{title}</strong></td><td>{desc}</td><td>{badge(level)}</td></tr>")
 h("""</table>
 <p style="margin-top:16px;font-size:13px;color:#6B7280;">
-  None of these issues materially affect the conclusions of this analysis, but they indicate the
-  need for schema validation and data contract enforcement upstream.
+  The label casing and column misrouting issues are symptomatic of a pipeline bug that should be
+  fixed at the source. The watchlist and UNSUPPORTED_DOCUMENT_TYPE discrepancies should be
+  clarified with Jumio directly. Schema validation and data contract enforcement at the pipeline
+  level would prevent these issues from accumulating undetected.
 </p>
 </div>
 """)
@@ -953,9 +1033,10 @@ recommendations = [
     (
         "Introduce a guided retry flow for liveness failures",
         f"Of the {(df['liveness_decision']=='REJECTED').sum():,} liveness rejections, "
-        f"{liveness_reasons.get('liveness_UNDETERMINED',0):,} are UNDETERMINED — meaning the system "
-        "could not reach a conclusion, not that the user failed. "
-        "These users should be prompted to retry in better lighting conditions rather than being hard-rejected."
+        f"{liveness_reasons.get('liveness_UNDETERMINED',0):,} are <code>LIVENESS_UNDETERMINED</code> — "
+        "per Jumio docs this means the system could not reach a confident verdict, not that the user "
+        "failed liveness. These users should be prompted to retry (better lighting, no glasses, full face "
+        "visible) rather than being hard-rejected."
     ),
     (
         "Investigate the Aug 21 – Sep 3 rejection spike",
@@ -964,10 +1045,20 @@ recommendations = [
         "and app release history to identify the root cause and prevent recurrence."
     ),
     (
-        "Review watchlist warning handling",
-        f"{(df['watchlist_screening_decision']=='WARNING').sum()} users triggered a watchlist warning but "
-        "<strong>all 69 were marked as PASSED</strong>. Confirm with compliance that this is intentional "
-        "and that a manual review process exists for these cases."
+        "Establish a manual review process for watchlist ALERT matches",
+        f"Per Jumio documentation, a Watchlist WARNING decision means the label is <strong>ALERT</strong> — "
+        f"the user was found on one or more sanctions or PEP (Politically Exposed Person) watchlists. "
+        f"{(df['watchlist_screening_decision']=='WARNING').sum()} users matched a watchlist and all "
+        f"received an overall PASSED outcome. Confirm with the compliance team that a documented manual "
+        "review process exists for these cases, that each match is being assessed individually, and that "
+        "the business is comfortable with the current pass-through policy."
+    ),
+    (
+        "Audit and document manual override decisions",
+        "1 user was manually APPROVED despite <code>similarity=NO_MATCH</code> — their selfie did not match their ID. "
+        "Additionally, 2 users with <code>liveness=REJECTED</code> (LIVENESS_UNDETERMINED) received an overall PASSED. "
+        "Each manual override should have a documented rationale, an authorised approver, and be logged for audit purposes. "
+        "If LIVENESS_UNDETERMINED is intentionally treated as non-blocking, this policy should be formalised in writing."
     ),
     (
         "Enforce data quality at the pipeline level",
