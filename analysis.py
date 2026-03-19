@@ -1052,7 +1052,8 @@ h("""<div class="page">
   We then recursively reviewed the output and, as soon as we identified the first material mistake (or suboptimal part), we requested 
   Claude Code to fix and update the analysis (or parts of it). In order to ensure each new version Claude Code generated was better
   than the previous we provided the missing context (e.g.: Jumio docs, my own observations, summary of interview with a subject matter 
-  expert) - some of that context was stored in the repo itself to prevent regressions. </p>
+  expert). To prevent regressions, some context ia stored in the repo itself so Claude Code can refer to it and each change 
+  is reviewed before committing and pushing. </p>
 </div>
 """)
 
