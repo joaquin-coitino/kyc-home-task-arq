@@ -1017,17 +1017,15 @@ h("""<div class="page">
 # ─── Limitations & Assumptions ────────────────────────────────────────────────
 h("""<div class="page">
 <h2 id="limitations">4. Limitations &amp; Assumptions</h2>
-<div class="section-intro">
-  The following limitations and open questions were identified during the analysis.
-  They do not invalidate the findings but should be considered when acting on recommendations.
-</div>
+  <p>The following limitations and open questions were identified during the analysis.
+  They do not invalidate the findings but should be considered when acting on recommendations.</p>
 <table>
   <tr><th>Area</th><th>Limitation / Assumption</th></tr>
   <tr><td><strong>Retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
   <tr><td><strong>Workflow anomalies</strong></td><td>For 201 users, their usability check appears as not executed while at the same time the downstream checks have all passed. These may be users that have used a different workflow not shown on the dataset or, more likely, a data error.</td></tr>
   <tr><td><strong>Manual override policy</strong></td><td>4 users appear as <code>APPROVED</code> in the data. The exact difference between that label and <code>PASSED</code> is unclear — <code>APPROVED</code> may represent a manual decision and <code>PASSED</code> an automated one.</td></tr>
   <tr><td><strong>Liveness issue in usability check </strong></td><td>278 users show a liveness related failure in the usability check which is not expected as per Jumio's API documentation. This could reflect a pipeline bug or API change. We have assumed for these cases that the failure occurred at the liveness check stage and not at the usability one.</td></tr>
-  <tr><td><strong>API version drift</strong></td><td>The dataset is from 2023; the Jumio documentation used reflects the current API (2026). Some label names or decision behaviours may have changed. This introduces a risk of the data being misinterpreted.</td></tr>
+  <tr><td><strong>API version changes</strong></td><td>The dataset is from 2023; the Jumio documentation used reflects the current API (2026). Some label names or decision behaviours may have changed. This introduces a risk of the data being misinterpreted.</td></tr>
   <tr><td><strong>Time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
   <tr><td><strong>Dataset consistency</strong></td><td>1 user appears as <code>PASSED</code> in KYC_Summary but <code>REJECTED</code> in KYC_Details. The authoritative source for this record is unclear but we have decided to use KYC_Summary.</td></tr>
   <tr><td><strong>Colombia missing</strong></td><td>According to ARQ's website in July 2023, ARQ was live in Colombia (this can be seen using Wayback Machine). However, no records of Colombian users appear in the data set. At the time the company was known as DolarApp.</td></tr>
@@ -1038,9 +1036,7 @@ h("""<div class="page">
 # ─── Analysis wrapper ──────────────────────────────────────────────────────────
 h("""<div class="page">
 <h2 id="analysis">5. Analysis</h2>
-  <div class="section-intro">
-  Chain of reasoning that led to the findings and recommendations.
-</div>
+  <p>Chain of reasoning that led to the findings and recommendations.</p>
 </div>
 """)
 
@@ -1068,77 +1064,66 @@ h(f"""<div class="page">
     Driving License ({(df['data_type']=='DRIVING_LICENSE').sum():,}),
     Visa ({(df['data_type']=='VISA').sum():,})</p>
     <p><strong>KYC checks performed:</strong> Usability, Extraction, Image Checks,
-    Data Checks / Watchlist Screening, Liveness, Similarity.</p>
-    <h3>Conclusions</h3>
-    <p>Warnings are only ~1% of total attempts so we will be focusing on the larger problem of rejections</p>
-    <p>Analysing both Mexico and Argentina is important as they have roughly similar volumes </p>
-    <p>We will only look at ID cards and passports as they represent 98% of documents used by users</p>
-    <p></p>
+    Data Checks, Liveness, Similarity, Watchlist Screening.</p>
+    
   </div>
 </div>
+  <h3>Conclusions</h3>
+      <ul style="margin:0 0 0 18px;line-height:1.8;">
+        <li>Warnings are only ~1% of total attempts so we will be focusing on the larger problem of rejections.</li>
+        <li>Analysing both Mexico and Argentina is important as they have roughly similar volumes.</li>
+        <li>We will only look at ID cards and passports as they represent 98% of documents used by users.</li>
+      </ul>
 </div>
 """)
 
 # ─── 5.2 Jumio Documentation ──────────────────────────────────────────────────
 h(f"""<div class="page">
 <h2 id="jumio-docs">5.2 Jumio Documentation</h2>
-<div class="section-intro">
-  Jumio's KYC pipeline runs up to seven checks per transaction. Understanding each check is essential
-  for interpreting the data and attributing failures correctly.
-</div>
+  <p>Jumio's documentation explains the different checks that are part of the KYC pipeline.</p>
 
 <h3>Check overview</h3>
 <table>
-  <tr><th>Check</th><th>What it tests</th><th>Depends on</th><th>Possible decisions</th></tr>
+  <tr><th>Check</th><th>What it tests</th><th>Possible decisions</th></tr>
   <tr>
     <td><strong>Usability</strong></td>
     <td>Whether uploaded images (ID and selfie) are of sufficient quality to process</td>
-    <td>None (root check)</td>
     <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
   </tr>
   <tr>
     <td><strong>Extraction</strong></td>
     <td>Whether mandatory fields can be extracted from the ID</td>
-    <td>Usability (ID)</td>
     <td>PASSED, NOT_EXECUTED</td>
   </tr>
   <tr>
     <td><strong>Image Checks</strong></td>
     <td>Whether the ID passes integrity tests</td>
-    <td>Usability + Extraction</td>
     <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
   </tr>
   <tr>
     <td><strong>Data Checks</strong></td>
     <td>Whether extracted data is internally consistent and does not match known fraud patterns or prior rejected transactions</td>
-    <td>Usability + Extraction + Image Checks</td>
     <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
   </tr>
   <tr>
     <td><strong>Watchlist Screening</strong></td>
     <td>Whether the user appears on global sanctions lists, PEP databases, or adverse media sources</td>
-    <td>Usability + Extraction + Image Checks (or standalone with name/DOB)</td>
     <td>PASSED, WARNING (ALERT), NOT_EXECUTED</td>
   </tr>
   <tr>
     <td><strong>Liveness</strong></td>
     <td>Whether the selfie was captured from a live person (detects spoofing, printed photos, screen recordings)</td>
-    <td>Usability (selfie only) — independent of document chain</td>
     <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
   </tr>
   <tr>
     <td><strong>Similarity</strong></td>
     <td>Whether the face in the selfie matches the face on the ID document</td>
-    <td>Usability (face detectability on ID only) — independent of document chain</td>
     <td>PASSED (MATCH), REJECTED (NO_MATCH), WARNING (NOT_POSSIBLE), NOT_EXECUTED</td>
   </tr>
 </table>
 
 <h3>Check dependency graph</h3>
-<p>The pipeline is a dependency graph, not a linear sequence. Usability is the root check.
-The document chain (Extraction → Image Checks → Data Checks / Watchlist) can only proceed if
-Usability passes. Liveness and Similarity run off their own Usability conditions and are
-independent of the document chain — a document failure does not block them.</p>
+<p>Some checks can only run once another check has run.</p>
 <div class="chart-box">{img_tag(CHART_DAG)}</div>
 </div>
 """)
@@ -1148,7 +1133,7 @@ h("""<div class="page">
 <h2 id="qualitative">5.3 Qualitative Review of Jumio</h2>
 <div class="section-intro">
   To complement the quantitative data, a conversation was held with <strong>Agustín Pividori</strong>,
-  FinCrime lead at Personal Pay — a LATAM fintech and <strong>active Jumio customer</strong>. The insights below
+  FinCrime lead at Personal Pay (a LATAM fintech and <strong>active Jumio customer</strong>). The insights below
   reflect his direct experience operating Jumio in production.
 </div>
 
