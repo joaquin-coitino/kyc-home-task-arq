@@ -1008,9 +1008,15 @@ h(f"""<div class="page">
 # ─── Methodology ──────────────────────────────────────────────────────────────
 h("""<div class="page">
 <h2 id="methodology">3. Methodology</h2>
-<div class="placeholder">
-  [ To be completed ]
-</div>
+<p>This document and supporting analysis was primarily done on Python and HTML using Claude Code. 
+  The repository with the code and changes is available in 
+  <a href="https://github.com/joaquin-coitino/kyc-home-task-arq">Github<a>.</p>
+<p>The process to solve the problem was "greedy". We did not start with any hypothesis or predetermined workflow.
+  We started by providing Claude Code with the description of the task and datasets and requested it to output a solution.
+  We then recursively reviewed the output and, as soon as we identified the first material mistake (or suboptimal part), we requested 
+  Claude Code to fix and update the analysis (or parts of it). In order to ensure each new version Claude Code generated was better
+  than the previous we provided the missing context (e.g.: Jumio docs, my own observations, summary of interview with a subject matter 
+  expert) - some of that context was stored in the repo itself to prevent regressions. </p>
 </div>
 """)
 
@@ -1131,35 +1137,33 @@ h(f"""<div class="page">
 # ─── 5.3 Qualitative Review of Jumio ─────────────────────────────────────────
 h("""<div class="page">
 <h2 id="qualitative">5.3 Qualitative Review of Jumio</h2>
-<div class="section-intro">
-  To complement the quantitative data, a conversation was held with <strong>Agustín Pividori</strong>,
+  <p>To complement the quantitative data, a conversation was held with <strong>Agustín Pividori</strong>,
   FinCrime lead at Personal Pay (a LATAM fintech and <strong>active Jumio customer</strong>). The insights below
-  reflect his direct experience operating Jumio in production.
-</div>
+  reflect his direct experience operating Jumio in production. </p>
 
 <h3>Key Points</h3>
-<p> Personal Pay selected Jumio primarily on cost. </p>
-<p> FaceTec is the main competitor (widely used by Mercado Libre and major banks).</p>
-<p> DNI (national ID) is the only universally required document type across LATAM financial institutions.
-Passports and driver's licenses are much less common — consistent with our dataset where ID Cards
-represent 86% of all attempts.</p>
-<p> Jumio's document capture is aggressive in rejecting images that do not meet its quality bar. This creates friction.
-<p> False positives were a concern prior to SLA negotiations; once managed, they came within agreed limits.</p>
+<ul style="margin:0 0 0 18px;line-height:1.8;">
+  <li>Personal Pay selected Jumio primarily on cost.</li>
+  <li>FaceTec is the main competitor (widely used by Mercado Libre and major banks).</li>
+  <li>DNI (national ID) is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 86% of all attempts).</li>
+  <li>Jumio's document capture is aggressive in rejecting images that do not meet its quality bar. This creates friction.</li>
+  <li>False positives were a concern prior to SLA negotiations; once managed, they came within agreed limits.</li>
+</ul>
   
 <h3>Conclusions</h3>
-<p> Check false positives (if possible) during the analysis </p>
-<p> Check for image quality failures </p>
-
+<ul style="margin:0 0 0 18px;line-height:1.8;">
+  <li> Although unlikely to be visible in the current data set, we will keep an eye during the analysis on false positives that might merit a discussion with Jumio. </li>
+  <li> Verify if image quality rejections are excessive as this might indicate an issue with Jumio and warrant considering alternative vendors. </li>
+</ul>
+  
 </div>
 """)
 
 # ─── 5.4 Data Quality ────────────────────────────────────────────────────────
 h("""<div class="page">
 <h2 id="data-quality">5.4 Data Quality</h2>
-<div class="section-intro">
-  Several data quality issues were identified in the dataset. While most are minor, they can
-  affect downstream analytics and should be addressed at the pipeline level.
-</div>
+  <p>Several data quality issues were identified in the dataset. While most are minor, they can
+  affect downstream analytics and should be addressed at the pipeline level.</p>
 <table>
   <tr>
     <th>Issue</th>
