@@ -870,7 +870,7 @@ h("""<div class="page">
   <a href="#objective">1. Objective</a>
   <a href="#findings-recommendations">2. Findings &amp; Recommendations</a>
   <a href="#methodology">3. Methodology</a>
-  <a href="#limitations">4. Limitations &amp; Assumptions</a>
+  <a href="#limitations">4. Limitations</a>
   <a href="#analysis">5. Analysis</a>
   <a href="#overview" class="toc-sub">5.1 Dataset Overview</a>
   <a href="#jumio-docs" class="toc-sub">5.2 Jumio Documentation</a>
@@ -1047,21 +1047,19 @@ h("""<div class="page">
 </div>
 """)
 
-# ─── Limitations & Assumptions ────────────────────────────────────────────────
+# ─── Limitations ────────────────────────────────────────────────
 h("""<div class="page">
-<h2 id="limitations">4. Limitations &amp; Assumptions</h2>
-  <p>The following limitations and open questions were identified during the analysis.
+<h2 id="limitations">4. Limitations</h2>
+  <p>The following limitations were identified during the analysis.
   They do not invalidate the findings but should be considered when acting on recommendations.</p>
 <table>
-  <tr><th>Area</th><th>Limitation / Assumption</th></tr>
-  <tr><td><strong>Retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
-  <tr><td><strong>Workflow anomalies</strong></td><td>For 201 users, their usability check appears as not executed while at the same time the downstream checks have all passed. These may be users that have used a different workflow not shown on the dataset or, more likely, a data error.</td></tr>
-  <tr><td><strong>Manual override policy</strong></td><td>4 users appear as <code>APPROVED</code> in the data. The exact difference between that label and <code>PASSED</code> is unclear — <code>APPROVED</code> may represent a manual decision and <code>PASSED</code> an automated one.</td></tr>
-  <tr><td><strong>Liveness issue in usability check </strong></td><td>278 users show a liveness related failure in the usability check which is not expected as per Jumio's API documentation. This could reflect a pipeline bug or API change. We have assumed for these cases that the failure occurred at the liveness check stage and not at the usability one.</td></tr>
+  <tr><th>Area</th><th>Limitations</th></tr>
+  <tr><td><strong>Unclear retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
+  <tr><td><strong>Data quality issues</strong></td><td>Multiple instances have been found of data that seems incorrect. However, we are unable to confirm if they are actually errors and what the correct value should be.</td></tr>
   <tr><td><strong>API version changes</strong></td><td>The dataset is from 2023; the Jumio documentation used reflects the current API (2026). Some label names or decision behaviours may have changed. This introduces a risk of the data being misinterpreted.</td></tr>
-  <tr><td><strong>Time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
-  <tr><td><strong>Dataset consistency</strong></td><td>1 user appears as <code>PASSED</code> in KYC_Summary but <code>REJECTED</code> in KYC_Details. The authoritative source for this record is unclear but we have decided to use KYC_Summary.</td></tr>
-  <tr><td><strong>Colombia missing</strong></td><td>According to ARQ's website in July 2023, ARQ was live in Colombia (this can be seen using Wayback Machine). However, no records of Colombian users appear in the data set. At the time the company was known as DolarApp.</td></tr>
+  <tr><td><strong>Short time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
+  <tr><td><strong>No Colombian users</strong></td><td>According to ARQ's website in July 2023, ARQ (DolarApp) was live in Colombia (this can be seen using Wayback Machine). However, it is not known why there are no records of Colombian users in the data set.</td></tr>
+  <tr><td><strong>Narrow scope of data</strong></td><td>The dataset only gives a small view of ARQ's KYC flows. No access has been provided to logs, Jumio support, codebase, etc.. However, those elements are key to diagnosing and solving the problem.</td></tr>
 </table>
 </div>
 """)
