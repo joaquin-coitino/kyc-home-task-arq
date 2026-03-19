@@ -302,19 +302,48 @@ def draw_box(ax, xy, text, color, width=1.8, height=0.55, fontsize=9.5):
     ax.text(x, y, text, ha="center", va="center", fontsize=fontsize,
             fontweight="bold", color=color)
 
+def _box_crossings(p0, p1, cx, cy, hw=0.9, hh=0.275):
+    """t values where line P(t)=p0+t*(p1-p0) crosses box [cx±hw, cy±hh], t in (eps, 1-eps)."""
+    dx = p1[0] - p0[0]; dy = p1[1] - p0[1]
+    eps = 1e-9
+    ts = []
+    if abs(dx) > eps:
+        for ex in [cx - hw, cx + hw]:
+            t = (ex - p0[0]) / dx
+            if eps < t < 1 - eps:
+                y = p0[1] + t * dy
+                if cy - hh - eps <= y <= cy + hh + eps:
+                    ts.append(t)
+    if abs(dy) > eps:
+        for ey in [cy - hh, cy + hh]:
+            t = (ey - p0[1]) / dy
+            if eps < t < 1 - eps:
+                x = p0[0] + t * dx
+                if cx - hw - eps <= x <= cx + hw + eps:
+                    ts.append(t)
+    return ts
+
+def _pt(p0, p1, t):
+    return (p0[0] + t*(p1[0]-p0[0]), p0[1] + t*(p1[1]-p0[1]))
+
 def arrow(ax, src, dst, color="#9CA3AF"):
-    ax.annotate("", xy=dst, xytext=src,
+    """Draw arrow from src box edge to dst box edge, computed geometrically."""
+    src_ts = _box_crossings(src, dst, src[0], src[1])
+    dst_ts = _box_crossings(src, dst, dst[0], dst[1])
+    src_pt = _pt(src, dst, min(src_ts)) if src_ts else src
+    dst_pt = _pt(src, dst, min(dst_ts)) if dst_ts else dst
+    ax.annotate("", xy=dst_pt, xytext=src_pt,
                 arrowprops=dict(arrowstyle="-|>", color=color, lw=1.4))
 
-# Node positions: (x, y)  — y increases upward, we'll invert
+# Node positions — left column: document chain; right column: selfie/identity (stacked)
 nodes = {
-    "Usability":            (4.0, 5.0),
-    "Extraction":           (2.5, 3.8),
-    "Image Checks":         (2.5, 2.6),
-    "Data Checks":          (1.2, 1.4),
-    "Watchlist\nScreening": (3.8, 1.4),
-    "Liveness":             (6.0, 3.8),
-    "Similarity":           (7.2, 3.8),
+    "Usability":            (4.5, 5.0),
+    "Extraction":           (3.0, 3.8),
+    "Image Checks":         (3.0, 2.6),
+    "Data Checks":          (1.8, 1.4),
+    "Watchlist\nScreening": (4.2, 1.4),
+    "Liveness":             (7.0, 3.8),
+    "Similarity":           (7.0, 2.6),
 }
 
 # Edges: (from, to, label)
@@ -333,12 +362,12 @@ node_colors = {
     "Image Checks":         BRAND_BLUE,
     "Data Checks":          BRAND_BLUE,
     "Watchlist\nScreening": BRAND_BLUE,
-    "Liveness":             "#7C3AED",   # purple — independent branch
+    "Liveness":             "#7C3AED",
     "Similarity":           "#7C3AED",
 }
 
 fig, ax = plt.subplots(figsize=(10, 5))
-ax.set_xlim(0, 9)
+ax.set_xlim(0.5, 8.5)
 ax.set_ylim(0.6, 5.8)
 ax.axis("off")
 ax.set_facecolor("#FAFAFA")
@@ -347,15 +376,13 @@ fig.patch.set_facecolor("#FAFAFA")
 # Draw edges first (behind boxes)
 edge_colors = {"doc": BRAND_BLUE, "selfie": "#7C3AED", "face detect": "#7C3AED"}
 for src, dst, etype in edges:
-    sx, sy = nodes[src]
-    dx, dy = nodes[dst]
-    arrow(ax, (sx, sy), (dx, dy), color=edge_colors[etype])
+    arrow(ax, nodes[src], nodes[dst], color=edge_colors[etype])
 
 # Edge labels
 edge_label_positions = {
-    ("Usability", "Liveness"):           (5.3, 4.5, "selfie\nusability"),
-    ("Usability", "Similarity"):         (6.0, 4.5, "face\ndetectability"),
-    ("Usability", "Extraction"):         (3.0, 4.5, ""),
+    ("Usability", "Liveness"):   (6.1, 4.7, "selfie\nusability"),
+    ("Usability", "Similarity"): (6.1, 4.0, "face\ndetectability"),
+    ("Usability", "Extraction"): (3.0, 4.5, ""),
 }
 for (src, dst), (lx, ly, lbl) in edge_label_positions.items():
     if lbl:
@@ -641,17 +668,18 @@ body {
   padding: 0;
 }
 .cover {
-  background: linear-gradient(135deg, #0D2A6B 0%, #1A4FBA 100%);
-  color: white;
-  padding: 80px 60px 60px;
+  background: #FFFFFF;
+  color: #111827;
+  padding: 64px 72px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: space-between;
+  border-left: 6px solid #111827;
 }
-.cover h1 { font-size: 40px; font-weight: 800; margin-bottom: 12px; }
-.cover .subtitle { font-size: 20px; opacity: 0.85; margin-bottom: 40px; }
-.cover .meta { font-size: 14px; opacity: 0.65; margin-top: 60px; }
+.cover h1 { font-size: 52px; font-weight: 800; color: #111827; margin-bottom: 14px; line-height: 1.1; }
+.cover .subtitle { font-size: 21px; color: #374151; margin-bottom: 0; }
+.cover .meta { font-size: 14px; color: #6B7280; border-top: 1px solid #E5E7EB; padding-top: 20px; margin-top: 0; }
 .page { padding: 48px 60px; max-width: 1100px; margin: 0 auto; }
 h2 {
   font-size: 22px; font-weight: 700;
@@ -816,6 +844,10 @@ def h(s):
     html_parts.append(s)
 
 # ─── Cover ───────────────────────────────────────────────────────────────────
+ARQ_LOGO = """<svg width="200" height="68" viewBox="0 0 112 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M36.303 13.1098V19.3799H0V13.1098C0 5.86928 5.89444 0 13.166 0H23.1357C30.4073 0 36.3017 5.86928 36.3017 13.1098H36.303ZM0 38H36.303V20.7106H0V38ZM72.699 13.1098V24.8889C72.699 32.1295 78.5934 37.9987 85.865 37.9987H91.4919V0H85.865C78.5934 0 72.699 5.86928 72.699 13.1098ZM37.6368 0V38L75.7972 37.9975L37.6368 0ZM71.7932 13.1098C71.7932 5.86928 65.8988 0 58.6272 0H39.5273L64.4873 24.8534C68.8186 22.7071 71.7945 18.2548 71.7945 13.1111L71.7932 13.1098ZM111.625 38L106.346 33.2394C109.551 30.8483 111.625 27.0352 111.625 22.7401V13.1098C111.625 5.86928 105.731 0 98.459 0H92.8283V38H111.625Z" fill="#111827"/>
+</svg>"""
+
 h(f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -825,12 +857,16 @@ h(f"""<!DOCTYPE html>
 </head>
 <body>
 <div class="cover">
-  <h1>KYC Process Analysis</h1>
-  <div class="subtitle">Identifying Inefficiencies &amp; Actionable Recommendations</div>
-  <p style="opacity:0.75;font-size:15px;">
-    Analysis of {total:,} KYC attempts across two markets (MEX &amp; ARG)<br>
-    Period: {date_min} – {date_max}
-  </p>
+  <div>{ARQ_LOGO}</div>
+  <div style="flex:1;display:flex;flex-direction:column;justify-content:center;padding:48px 0;">
+    <div style="width:56px;height:4px;background:#111827;margin-bottom:36px;"></div>
+    <h1>KYC Process Analysis</h1>
+    <div class="subtitle">Identifying Inefficiencies &amp; Actionable Recommendations</div>
+    <p style="font-size:15px;color:#6B7280;margin-top:28px;line-height:1.8;">
+      Analysis of {total:,} KYC attempts across two markets (MEX &amp; ARG)<br>
+      Period: {date_min} – {date_max}
+    </p>
+  </div>
   <div class="meta">
     Prepared for ARQ &nbsp;·&nbsp; March 2026
   </div>
