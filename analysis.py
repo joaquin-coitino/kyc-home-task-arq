@@ -358,12 +358,12 @@ edges = [
 
 node_colors = {
     "Usability":            BRAND_DARK,
-    "Extraction":           BRAND_BLUE,
-    "Image Checks":         BRAND_BLUE,
-    "Data Checks":          BRAND_BLUE,
-    "Watchlist\nScreening": BRAND_BLUE,
-    "Liveness":             "#7C3AED",
-    "Similarity":           "#7C3AED",
+    "Extraction":           BRAND_DARK,
+    "Image Checks":         BRAND_DARK,
+    "Data Checks":          BRAND_DARK,
+    "Watchlist\nScreening": BRAND_DARK,
+    "Liveness":             BRAND_DARK,
+    "Similarity":           BRAND_DARK,
 }
 
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -374,9 +374,8 @@ ax.set_facecolor("#FAFAFA")
 fig.patch.set_facecolor("#FAFAFA")
 
 # Draw edges first (behind boxes)
-edge_colors = {"doc": BRAND_BLUE, "selfie": "#7C3AED", "face detect": "#7C3AED"}
 for src, dst, etype in edges:
-    arrow(ax, nodes[src], nodes[dst], color=edge_colors[etype])
+    arrow(ax, nodes[src], nodes[dst])
 
 # Edge labels
 edge_label_positions = {
@@ -392,15 +391,6 @@ for (src, dst), (lx, ly, lbl) in edge_label_positions.items():
 # Draw node boxes
 for name, (x, y) in nodes.items():
     draw_box(ax, (x, y), name, node_colors[name])
-
-# Legend
-leg_items = [
-    mpatches.Patch(facecolor=BRAND_DARK+"22", edgecolor=BRAND_DARK, label="Root check"),
-    mpatches.Patch(facecolor=BRAND_BLUE+"22", edgecolor=BRAND_BLUE, label="Document chain"),
-    mpatches.Patch(facecolor="#7C3AED22",     edgecolor="#7C3AED",  label="Selfie / identity checks"),
-]
-ax.legend(handles=leg_items, loc="lower center", ncol=3, fontsize=8.5,
-          bbox_to_anchor=(0.5, -0.04), frameon=True, edgecolor="#E5E7EB")
 
 ax.set_title("Jumio KYC Check Dependency Graph", fontsize=13, fontweight="bold",
              color=BRAND_DARK, pad=10)
