@@ -302,19 +302,48 @@ def draw_box(ax, xy, text, color, width=1.8, height=0.55, fontsize=9.5):
     ax.text(x, y, text, ha="center", va="center", fontsize=fontsize,
             fontweight="bold", color=color)
 
+def _box_crossings(p0, p1, cx, cy, hw=0.9, hh=0.275):
+    """t values where line P(t)=p0+t*(p1-p0) crosses box [cx±hw, cy±hh], t in (eps, 1-eps)."""
+    dx = p1[0] - p0[0]; dy = p1[1] - p0[1]
+    eps = 1e-9
+    ts = []
+    if abs(dx) > eps:
+        for ex in [cx - hw, cx + hw]:
+            t = (ex - p0[0]) / dx
+            if eps < t < 1 - eps:
+                y = p0[1] + t * dy
+                if cy - hh - eps <= y <= cy + hh + eps:
+                    ts.append(t)
+    if abs(dy) > eps:
+        for ey in [cy - hh, cy + hh]:
+            t = (ey - p0[1]) / dy
+            if eps < t < 1 - eps:
+                x = p0[0] + t * dx
+                if cx - hw - eps <= x <= cx + hw + eps:
+                    ts.append(t)
+    return ts
+
+def _pt(p0, p1, t):
+    return (p0[0] + t*(p1[0]-p0[0]), p0[1] + t*(p1[1]-p0[1]))
+
 def arrow(ax, src, dst, color="#9CA3AF"):
-    ax.annotate("", xy=dst, xytext=src,
+    """Draw arrow from src box edge to dst box edge, computed geometrically."""
+    src_ts = _box_crossings(src, dst, src[0], src[1])
+    dst_ts = _box_crossings(src, dst, dst[0], dst[1])
+    src_pt = _pt(src, dst, min(src_ts)) if src_ts else src
+    dst_pt = _pt(src, dst, min(dst_ts)) if dst_ts else dst
+    ax.annotate("", xy=dst_pt, xytext=src_pt,
                 arrowprops=dict(arrowstyle="-|>", color=color, lw=1.4))
 
-# Node positions: (x, y)  — y increases upward, we'll invert
+# Node positions — left column: document chain; right column: selfie/identity (stacked)
 nodes = {
-    "Usability":            (4.0, 5.0),
-    "Extraction":           (2.5, 3.8),
-    "Image Checks":         (2.5, 2.6),
-    "Data Checks":          (1.2, 1.4),
-    "Watchlist\nScreening": (3.8, 1.4),
-    "Liveness":             (6.0, 3.8),
-    "Similarity":           (7.2, 3.8),
+    "Usability":            (4.5, 5.0),
+    "Extraction":           (3.0, 3.8),
+    "Image Checks":         (3.0, 2.6),
+    "Data Checks":          (1.8, 1.4),
+    "Watchlist\nScreening": (4.2, 1.4),
+    "Liveness":             (7.0, 3.8),
+    "Similarity":           (7.0, 2.6),
 }
 
 # Edges: (from, to, label)
@@ -333,12 +362,12 @@ node_colors = {
     "Image Checks":         BRAND_BLUE,
     "Data Checks":          BRAND_BLUE,
     "Watchlist\nScreening": BRAND_BLUE,
-    "Liveness":             "#7C3AED",   # purple — independent branch
+    "Liveness":             "#7C3AED",
     "Similarity":           "#7C3AED",
 }
 
 fig, ax = plt.subplots(figsize=(10, 5))
-ax.set_xlim(0, 9)
+ax.set_xlim(0.5, 8.5)
 ax.set_ylim(0.6, 5.8)
 ax.axis("off")
 ax.set_facecolor("#FAFAFA")
@@ -347,15 +376,13 @@ fig.patch.set_facecolor("#FAFAFA")
 # Draw edges first (behind boxes)
 edge_colors = {"doc": BRAND_BLUE, "selfie": "#7C3AED", "face detect": "#7C3AED"}
 for src, dst, etype in edges:
-    sx, sy = nodes[src]
-    dx, dy = nodes[dst]
-    arrow(ax, (sx, sy), (dx, dy), color=edge_colors[etype])
+    arrow(ax, nodes[src], nodes[dst], color=edge_colors[etype])
 
 # Edge labels
 edge_label_positions = {
-    ("Usability", "Liveness"):           (5.3, 4.5, "selfie\nusability"),
-    ("Usability", "Similarity"):         (6.0, 4.5, "face\ndetectability"),
-    ("Usability", "Extraction"):         (3.0, 4.5, ""),
+    ("Usability", "Liveness"):   (6.1, 4.7, "selfie\nusability"),
+    ("Usability", "Similarity"): (6.1, 4.0, "face\ndetectability"),
+    ("Usability", "Extraction"): (3.0, 4.5, ""),
 }
 for (src, dst), (lx, ly, lbl) in edge_label_positions.items():
     if lbl:
