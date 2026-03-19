@@ -228,6 +228,46 @@ for col in ["PASSED", "REJECTED", "WARNING"]:
 daily["total"] = daily.sum(axis=1)
 daily["rejection_rate"] = daily["REJECTED"] / daily["total"] * 100
 
+# ── Anomaly Investigation computations ───────────────────────────────────────
+rejected_df["is_pipeline_blocked"] = rejected_df["first_fail"].isin(
+    ["extraction_blocked", "usability_warning_blocked", "usability_not_executed"])
+rejected_df["week_str"] = rejected_df["week"].astype(str)
+
+# Weekly rejection composition
+_wbc = rejected_df.groupby("week_str")["is_pipeline_blocked"].agg(["sum", "count"]).rename(
+    columns={"sum": "pipeline_blocked", "count": "total_rejected"})
+_wbc["hard_fail"] = _wbc["total_rejected"] - _wbc["pipeline_blocked"]
+weekly_blocked_by_week = _wbc.reindex(weekly.index, fill_value=0)
+
+# Spike vs baseline pipeline blockage share
+_spike_keys = [w for w in weekly_blocked_by_week.index if "08-21" in w or "08-28" in w]
+_base_keys  = list(weekly_blocked_by_week.index[:4])
+spike_blocked_pct    = (weekly_blocked_by_week.loc[_spike_keys, "pipeline_blocked"].sum() /
+                        weekly_blocked_by_week.loc[_spike_keys, "total_rejected"].sum() * 100)
+baseline_blocked_pct = (weekly_blocked_by_week.loc[_base_keys,  "pipeline_blocked"].sum() /
+                        weekly_blocked_by_week.loc[_base_keys,  "total_rejected"].sum() * 100)
+
+# Country rejection composition (as % of total attempts)
+country_rj_comp = rejected_df.groupby("data_issuing_country")["is_pipeline_blocked"].agg(["sum", "count"]).rename(
+    columns={"sum": "pipeline_blocked", "count": "total_rejected"})
+country_rj_comp["hard_fail"] = country_rj_comp["total_rejected"] - country_rj_comp["pipeline_blocked"]
+_country_total = df.groupby("data_issuing_country").size()
+country_rj_comp["blocked_rate"] = country_rj_comp["pipeline_blocked"] / _country_total * 100
+country_rj_comp["hard_rate"]    = country_rj_comp["hard_fail"]         / _country_total * 100
+mex_blocked_pct = country_rj_comp.loc["MEX", "blocked_rate"]
+arg_blocked_pct = country_rj_comp.loc["ARG", "blocked_rate"]
+
+# Doc type rejection composition (ID_CARD vs PASSPORT only)
+_dt_filter = rejected_df["data_type"].isin(["ID_CARD", "PASSPORT"])
+doctype_rj_comp = rejected_df[_dt_filter].groupby("data_type")["is_pipeline_blocked"].agg(["sum", "count"]).rename(
+    columns={"sum": "pipeline_blocked", "count": "total_rejected"})
+doctype_rj_comp["hard_fail"] = doctype_rj_comp["total_rejected"] - doctype_rj_comp["pipeline_blocked"]
+_dtype_total = df[df["data_type"].isin(["ID_CARD", "PASSPORT"])].groupby("data_type").size()
+doctype_rj_comp["blocked_rate"] = doctype_rj_comp["pipeline_blocked"] / _dtype_total * 100
+doctype_rj_comp["hard_rate"]    = doctype_rj_comp["hard_fail"]         / _dtype_total * 100
+idcard_blocked_pct   = doctype_rj_comp.loc["ID_CARD",  "blocked_rate"]
+passport_blocked_pct = doctype_rj_comp.loc["PASSPORT", "blocked_rate"]
+
 
 # ════════════════════════════════════════════════════════════════════════════
 # CHART 1 — Overall outcomes donut
@@ -481,6 +521,49 @@ for ax, country in zip(axes, ["MEX", "ARG"]):
     ax.set_title(f"{country} — Pass Rate by Document Subtype")
 plt.tight_layout()
 CHART_SUBTYPE = fig_to_b64(fig)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHART ANOM-A — Weekly: hard rejections vs pipeline blockages (stacked bar)
+# ════════════════════════════════════════════════════════════════════════════
+fig, ax = plt.subplots(figsize=(9, 3.8))
+x = range(len(weekly_blocked_by_week))
+ax.bar(x, weekly_blocked_by_week["hard_fail"],
+       label="Hard rejection", color=FAIL_RED, edgecolor="none")
+ax.bar(x, weekly_blocked_by_week["pipeline_blocked"],
+       bottom=weekly_blocked_by_week["hard_fail"],
+       label="Pipeline blocked", color=WARN_AMBER, edgecolor="none")
+ax.set_xticks(list(x))
+ax.set_xticklabels([w.replace("/2023-", "\n") for w in weekly_blocked_by_week.index], fontsize=8)
+ax.set_ylabel("Rejections")
+ax.set_title("Weekly Rejection Composition: Hard Failures vs Pipeline Blockages")
+ax.legend(fontsize=9)
+plt.tight_layout()
+CHART_ANOM_WEEKLY = fig_to_b64(fig)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHART ANOM-B — Country: pipeline vs hard rejection rates (grouped bar)
+# ════════════════════════════════════════════════════════════════════════════
+fig, axes = plt.subplots(1, 2, figsize=(10, 3.5))
+for ax, (df_comp, title, cats) in zip(axes, [
+    (country_rj_comp, "MEX vs ARG — Rejection Composition\n(% of total attempts per country)", country_rj_comp.index.tolist()),
+    (doctype_rj_comp, "ID Card vs Passport — Rejection Composition\n(% of total attempts per doc type)", doctype_rj_comp.index.tolist()),
+]):
+    w = 0.35
+    xs = range(len(cats))
+    ax.bar([i - w/2 for i in xs], df_comp["hard_rate"],    width=w, label="Hard rejection", color=FAIL_RED,   edgecolor="none")
+    ax.bar([i + w/2 for i in xs], df_comp["blocked_rate"], width=w, label="Pipeline blocked", color=WARN_AMBER, edgecolor="none")
+    for i, cat in enumerate(cats):
+        ax.text(i - w/2, df_comp.loc[cat, "hard_rate"]    + 0.2, f"{df_comp.loc[cat, 'hard_rate']:.1f}%",    ha="center", fontsize=8.5, color=GRAY)
+        ax.text(i + w/2, df_comp.loc[cat, "blocked_rate"] + 0.2, f"{df_comp.loc[cat, 'blocked_rate']:.1f}%", ha="center", fontsize=8.5, color=GRAY)
+    ax.set_xticks(list(xs))
+    ax.set_xticklabels(cats)
+    ax.set_ylabel("% of total attempts")
+    ax.set_title(title, fontsize=10)
+    ax.legend(fontsize=8.5)
+plt.tight_layout()
+CHART_ANOM_SEGMENTS = fig_to_b64(fig)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -764,12 +847,12 @@ h("""<div class="page">
   <a href="#limitations">4. Limitations &amp; Assumptions</a>
   <a href="#analysis">5. Analysis</a>
   <a href="#overview" class="toc-sub">5.1 Dataset Overview</a>
-  <a href="#failure-funnel" class="toc-sub">5.2 Failure Funnel Analysis</a>
-  <a href="#failure-reasons" class="toc-sub">5.3 Failure Reasons Deep Dive</a>
-  <a href="#document-type" class="toc-sub">5.4 Document Type Performance</a>
-  <a href="#country" class="toc-sub">5.5 Country Analysis</a>
-  <a href="#trends" class="toc-sub">5.6 Time Trends</a>
-  <a href="#data-quality" class="toc-sub">5.7 Data Quality Issues</a>
+  <a href="#jumio-docs" class="toc-sub">5.2 Jumio Documentation</a>
+  <a href="#qualitative" class="toc-sub">5.3 Qualitative Review of Jumio</a>
+  <a href="#data-quality" class="toc-sub">5.4 Data Quality</a>
+  <a href="#pass-rates" class="toc-sub">5.5 Pass Rates</a>
+  <a href="#rejection-causes" class="toc-sub">5.6 Rejection Causes</a>
+  <a href="#anomaly" class="toc-sub">5.7 Anomaly Investigation</a>
 </div>
 </div>
 """)
@@ -986,205 +1069,108 @@ h(f"""<div class="page">
     Visa ({(df['data_type']=='VISA').sum():,})</p>
     <p><strong>KYC checks performed:</strong> Usability, Extraction, Image Checks,
     Data Checks / Watchlist Screening, Liveness, Similarity.</p>
+    <h3>Conclusions</h3>
+    <p>Warnings are only ~1% of total attempts so we will be focusing on the larger problem of rejections</p>
+    <p>Analysing both Mexico and Argentina is important as they have roughly similar volumes </p>
+    <p>We will only look at ID cards and passports as they represent 98% of documents used by users</p>
+    <p></p>
   </div>
 </div>
 </div>
 """)
 
-# ─── Failure Funnel ──────────────────────────────────────────────────────────
+# ─── 5.2 Jumio Documentation ──────────────────────────────────────────────────
 h(f"""<div class="page">
-<h2 id="failure-funnel">5.2 Failure Funnel Analysis</h2>
+<h2 id="jumio-docs">5.2 Jumio Documentation</h2>
 <div class="section-intro">
-  The Jumio KYC pipeline is <strong>not a simple linear sequence</strong> — it is a dependency
-  graph. Usability is the root check. Liveness and Similarity run in parallel off Usability and
-  are independent of the document chain. Image Checks and Data Checks depend on both Usability
-  and Extraction completing successfully.
+  Jumio's KYC pipeline runs up to seven checks per transaction. Understanding each check is essential
+  for interpreting the data and attributing failures correctly.
 </div>
+
+<h3>Check overview</h3>
+<table>
+  <tr><th>Check</th><th>What it tests</th><th>Depends on</th><th>Possible decisions</th></tr>
+  <tr>
+    <td><strong>Usability</strong></td>
+    <td>Whether uploaded images (ID and selfie) are of sufficient quality to process</td>
+    <td>None (root check)</td>
+    <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
+  </tr>
+  <tr>
+    <td><strong>Extraction</strong></td>
+    <td>Whether mandatory fields can be extracted from the ID</td>
+    <td>Usability (ID)</td>
+    <td>PASSED, NOT_EXECUTED</td>
+  </tr>
+  <tr>
+    <td><strong>Image Checks</strong></td>
+    <td>Whether the ID passes integrity tests</td>
+    <td>Usability + Extraction</td>
+    <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
+  </tr>
+  <tr>
+    <td><strong>Data Checks</strong></td>
+    <td>Whether extracted data is internally consistent and does not match known fraud patterns or prior rejected transactions</td>
+    <td>Usability + Extraction + Image Checks</td>
+    <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
+  </tr>
+  <tr>
+    <td><strong>Watchlist Screening</strong></td>
+    <td>Whether the user appears on global sanctions lists, PEP databases, or adverse media sources</td>
+    <td>Usability + Extraction + Image Checks (or standalone with name/DOB)</td>
+    <td>PASSED, WARNING (ALERT), NOT_EXECUTED</td>
+  </tr>
+  <tr>
+    <td><strong>Liveness</strong></td>
+    <td>Whether the selfie was captured from a live person (detects spoofing, printed photos, screen recordings)</td>
+    <td>Usability (selfie only) — independent of document chain</td>
+    <td>PASSED, REJECTED, WARNING, NOT_EXECUTED</td>
+  </tr>
+  <tr>
+    <td><strong>Similarity</strong></td>
+    <td>Whether the face in the selfie matches the face on the ID document</td>
+    <td>Usability (face detectability on ID only) — independent of document chain</td>
+    <td>PASSED (MATCH), REJECTED (NO_MATCH), WARNING (NOT_POSSIBLE), NOT_EXECUTED</td>
+  </tr>
+</table>
 
 <h3>Check dependency graph</h3>
+<p>The pipeline is a dependency graph, not a linear sequence. Usability is the root check.
+The document chain (Extraction → Image Checks → Data Checks / Watchlist) can only proceed if
+Usability passes. Liveness and Similarity run off their own Usability conditions and are
+independent of the document chain — a document failure does not block them.</p>
 <div class="chart-box">{img_tag(CHART_DAG)}</div>
-
-<h3>Root cause of rejections</h3>
-<div class="chart-box">{img_tag(CHART_FAIL_CHECK)}</div>
-
-<h3>Key observations</h3>
-<div class="finding red no-break">
-  <strong>Pipeline blockages — {n_pipeline_blocked:,} rejections ({n_pipeline_blocked/n_rejected*100:.1f}% of all rejections)</strong>
-  These users were not rejected because a check explicitly failed — the pipeline itself stalled.
-  <ul style="margin:8px 0 0 18px;font-size:13px;">
-    <li><strong>Extraction blocked ({n_extraction_blocked:,}):</strong> Usability passed but Extraction never ran, halting Image Checks, Data Checks, and Watchlist Screening.</li>
-    <li><strong>Usability WARNING cascaded ({n_usability_warn:,}):</strong> A usability warning (e.g. blurred image) was treated as a hard blocker for Extraction.</li>
-    <li><strong>Usability not executed ({n_usability_noexec:,}):</strong> The root check itself did not run.</li>
-  </ul>
-</div>
-<div class="finding red no-break">
-  <strong>Similarity failures — {n_similarity:,} rejections ({n_similarity/n_rejected*100:.1f}%)</strong>
-  Selfie does not match the document photo. Similarity depends on Usability only for face
-  detectability, so it runs independently of the document chain.
-</div>
-<div class="finding amber no-break">
-  <strong>Liveness failures — {n_liveness:,} rejections ({n_liveness/n_rejected*100:.1f}%)</strong>
-  The system cannot confirm the user is live. Liveness is independent of the document chain —
-  it runs on the selfie as soon as Usability passes. The most common cause is UNDETERMINED,
-  suggesting connectivity or UX issues rather than spoofing.
-</div>
-<div class="finding amber no-break">
-  <strong>Image check failures — {n_image:,} rejections ({n_image/n_rejected*100:.1f}%)</strong>
-  Documents flagged as manipulated ({image_reasons.get('MANIPULATED_DOCUMENT', 0):,} cases)
-  or digital copies ({image_reasons.get('DIGITAL_COPY', 0):,} cases).
-</div>
-<div class="finding amber no-break">
-  <strong>Usability hard rejections — {n_usability:,} rejections ({n_usability/n_rejected*100:.1f}%)</strong>
-  The document image could not be processed at all (wrong document type, not uploaded, etc.).
-  A usability rejection blocks the entire document chain.
-</div>
 </div>
 """)
 
-# ─── Failure Reasons ──────────────────────────────────────────────────────────
-h(f"""<div class="page">
-<h2 id="failure-reasons">5.3 Failure Reasons Deep Dive</h2>
-<div class="section-intro">
-  Drilling into the <em>details</em> columns reveals the specific error codes behind each check
-  failure, enabling targeted interventions.
-</div>
-
-<div class="chart-row">
-  <div class="chart-box">
-    <h3>Usability Failures</h3>
-    {img_tag(CHART_USABILITY)}
-    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
-      On the <strong>REJECTED</strong> side, MISSING_MANDATORY_DATAPOINTS
-      ({usability_rejected_reasons.get('MISSING_MANDATORY_DATAPOINTS',0):,}) and image quality
-      issues (BLURRED, GLARE, MISSING_PAGE) are the main causes — all addressable with better
-      capture guidance in the app.
-      On the <strong>WARNING</strong> side, UNSUPPORTED_DOCUMENT_TYPE
-      ({usability_warning_reasons.get('UNSUPPORTED_DOCUMENT_TYPE',0):,}) dominates — users are
-      submitting a document type not supported by the workflow. This should be caught earlier
-      in the onboarding flow with a document type selector.
-    </p>
-  </div>
-  <div class="chart-box">
-    <h3>Image Check Failures</h3>
-    {img_tag(CHART_IMAGE)}
-    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
-      MANIPULATED_DOCUMENT ({image_reasons.get('MANIPULATED_DOCUMENT',0):,}) is the dominant
-      failure reason and represents genuine fraud signals — these cases should be escalated
-      for manual review. DIGITAL_COPY ({image_reasons.get('DIGITAL_COPY',0):,}) may indicate
-      users photographing a screen instead of a physical document.
-    </p>
-  </div>
-</div>
-
-<div class="chart-row">
-  <div class="chart-box">
-    <h3>Liveness Failures</h3>
-    {img_tag(CHART_LIVENESS)}
-    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
-      <code>LIVENESS_UNDETERMINED</code> ({liveness_reasons.get('liveness_UNDETERMINED',0):,} rows, stored
-      as <code>liveness_UNDETERMINED</code> due to a pipeline naming bug) accounts for the vast majority.
-      Per Jumio docs, LIVENESS_UNDETERMINED means the system could not reach a confident verdict —
-      almost always a UX or connectivity issue, not a spoofing attempt. A guided retry flow
-      would recover most of these users.
-    </p>
-  </div>
-  <div class="chart-box">
-    <h3>Similarity Failures</h3>
-    {img_tag(CHART_SIMILARITY)}
-    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
-      NO_MATCH ({similarity_reasons.get('NO_MATCH',0):,}) means the selfie and document photo
-      could not be matched — a hard rejection. NOT_POSSIBLE ({similarity_reasons.get('NOT_POSSIBLE',0):,})
-      means the comparison cannot be determined at all (per Jumio docs, this results in a WARNING,
-      not a rejection). These {similarity_reasons.get('NOT_POSSIBLE',0):,} users currently pass overall
-      without a confirmed face match — a potential compliance gap worth reviewing with the risk team.
-    </p>
-  </div>
-</div>
-</div>
-""")
-
-# ─── Document Type ───────────────────────────────────────────────────────────
-h(f"""<div class="page">
-<h2 id="document-type">5.4 Document Type Performance</h2>
-<div class="chart-row">
-  <div class="chart-box">{img_tag(CHART_DOC_TYPE)}</div>
-  <div>
-    <h3>Findings</h3>
-    <p>Passports achieve the highest pass rate (<strong>96.4%</strong>) followed by Visas (95.8%).
-    ID Cards (92.6%) and Driving Licenses (89.5%) perform below the overall average.</p>
-    <p>However, document volumes tell a different story: ID Cards account for
-    <strong>{(df['data_type']=='ID_CARD').sum():,} attempts ({(df['data_type']=='ID_CARD').sum()/total*100:.0f}%)</strong>
-    of all attempts, making it the critical document type to optimise.</p>
-    <h3>Sub-type variation</h3>
-    <p>Within ID Cards, there is significant variation by sub-type — particularly in Mexico
-    where Electoral IDs (95.8%) outperform National IDs (89.3%) by 6.5 percentage points.
-    Guiding MEX users toward Electoral IDs could meaningfully improve their overall pass rate.</p>
-  </div>
-</div>
-<div class="chart-box">{img_tag(CHART_SUBTYPE)}</div>
-</div>
-""")
-
-# ─── Country Analysis ──────────────────────────────────────────────────────────
-mex_total = (df["data_issuing_country"] == "MEX").sum()
-arg_total = (df["data_issuing_country"] == "ARG").sum()
-mex_pass  = (df[df["data_issuing_country"]=="MEX"]["decision_type"]=="PASSED").sum()
-arg_pass  = (df[df["data_issuing_country"]=="ARG"]["decision_type"]=="PASSED").sum()
-
-h(f"""<div class="page">
-<h2 id="country">5.5 Country Analysis</h2>
-<div class="section-intro">
-  The dataset covers two markets: Mexico ({mex_total:,} attempts, {mex_total/total*100:.0f}%)
-  and Argentina ({arg_total:,} attempts, {arg_total/total*100:.0f}%). There is a
-  <strong>10.6 percentage-point gap</strong> in pass rates between them.
-</div>
-<div class="chart-row">
-  <div class="chart-box">{img_tag(CHART_COUNTRY)}</div>
-  <div>
-    <h3>Why is Mexico's pass rate lower?</h3>
-    <p><strong>Document mix:</strong> Mexico has a higher share of National IDs (89.3% pass rate)
-    relative to Electoral IDs (95.8%). If MEX users adopted Electoral IDs at the same rate
-    as other sub-types, the estimated pass rate would improve by ~2–3pp.</p>
-    <p><strong>RESIDENT_PERMIT_ID</strong> in Mexico has a 96.0% pass rate — one of the highest —
-    suggesting the document quality standards are achievable.</p>
-    <p><strong>Argentina's Driving Licenses</strong> (87.4%) are the weakest performer in that market,
-    representing an opportunity for targeted guidance.</p>
-    <p>The remaining gap likely reflects differences in user demographics, device quality, internet
-    connectivity, and potentially different fraud patterns.</p>
-  </div>
-</div>
-</div>
-""")
-
-# ─── Time Trends ──────────────────────────────────────────────────────────────
-h(f"""<div class="page">
-<h2 id="trends">5.6 Time Trends</h2>
-<div class="section-intro">
-  Monitoring the rejection rate over time reveals a significant anomaly in late August / early September
-  that warrants investigation.
-</div>
-<div class="chart-box">{img_tag(CHART_WEEKLY)}</div>
-<div class="finding red no-break">
-  <strong>Rejection spike: Aug 21 – Sep 3</strong>
-  The rejection rate jumped from a baseline of ~{baseline_rate:.1f}% to
-  {spike_rates[0]:.1f}% (Aug 21–27) and {spike_rates[1]:.1f}% (Aug 28–Sep 3) —
-  a {spike_rates[1]/baseline_rate:.1f}x increase. The rate partially recovered
-  afterwards but remained above baseline (13–14%) through the end of the observation period.
-</div>
-<h3>Potential causes to investigate</h3>
-<table>
-  <tr><th>Hypothesis</th><th>How to verify</th></tr>
-  <tr><td>Vendor system degradation or API changes</td><td>Check vendor incident logs &amp; SLA reports for those dates</td></tr>
-  <tr><td>New user acquisition campaign targeting lower-quality leads</td><td>Cross-reference with marketing campaign dates</td></tr>
-  <tr><td>Increased fraud attempt volume</td><td>Analyse MANIPULATED_DOCUMENT rate by week</td></tr>
-  <tr><td>Change in app version / document capture UI</td><td>Cross-reference with app release history</td></tr>
-</table>
-</div>
-""")
-
-# ─── Data Quality ────────────────────────────────────────────────────────────
+# ─── 5.3 Qualitative Review of Jumio ─────────────────────────────────────────
 h("""<div class="page">
-<h2 id="data-quality">5.7 Data Quality Issues</h2>
+<h2 id="qualitative">5.3 Qualitative Review of Jumio</h2>
+<div class="section-intro">
+  To complement the quantitative data, a conversation was held with <strong>Agustín Pividori</strong>,
+  FinCrime lead at Personal Pay — a LATAM fintech and <strong>active Jumio customer</strong>. The insights below
+  reflect his direct experience operating Jumio in production.
+</div>
+
+<h3>Key Points</h3>
+<p> Personal Pay selected Jumio primarily on cost. </p>
+<p> FaceTec is the main competitor (widely used by Mercado Libre and major banks).</p>
+<p> DNI (national ID) is the only universally required document type across LATAM financial institutions.
+Passports and driver's licenses are much less common — consistent with our dataset where ID Cards
+represent 86% of all attempts.</p>
+<p> Jumio's document capture is aggressive in rejecting images that do not meet its quality bar. This creates friction.
+<p> False positives were a concern prior to SLA negotiations; once managed, they came within agreed limits.</p>
+  
+<h3>Conclusions</h3>
+<p> Check false positives (if possible) during the analysis </p>
+<p> Check for image quality failures </p>
+
+</div>
+""")
+
+# ─── 5.4 Data Quality ────────────────────────────────────────────────────────
+h("""<div class="page">
+<h2 id="data-quality">5.4 Data Quality</h2>
 <div class="section-intro">
   Several data quality issues were identified in the dataset. While most are minor, they can
   affect downstream analytics and should be addressed at the pipeline level.
@@ -1205,6 +1191,189 @@ h("""</table>
   clarified with Jumio directly. Schema validation and data contract enforcement at the pipeline
   level would prevent these issues from accumulating undetected.
 </p>
+</div>
+""")
+
+# ─── 5.5 Pass Rates ───────────────────────────────────────────────────────────
+mex_total = (df["data_issuing_country"] == "MEX").sum()
+arg_total = (df["data_issuing_country"] == "ARG").sum()
+
+h(f"""<div class="page">
+<h2 id="pass-rates">5.5 Pass Rates</h2>
+<div class="section-intro">
+  Pass rates are analysed across three dimensions: time (weekly trend), document type, and country.
+</div>
+
+<h3>Trend over time</h3>
+<div class="chart-box">{img_tag(CHART_WEEKLY)}</div>
+<div class="finding red no-break">
+  <strong>Rejection spike: Aug 21 – Sep 3</strong>
+  The rejection rate jumped from a baseline of ~{baseline_rate:.1f}% to
+  {spike_rates[0]:.1f}% (Aug 21–27) and {spike_rates[1]:.1f}% (Aug 28–Sep 3) —
+  a {spike_rates[1]/baseline_rate:.1f}× increase. The rate partially recovered but remained
+  above baseline through the end of the observation period. Root cause is investigated in section 5.7.
+</div>
+
+<h3>By document type</h3>
+<div class="chart-row">
+  <div class="chart-box">{img_tag(CHART_DOC_TYPE)}</div>
+  <div>
+    <p>Passports achieve the highest pass rate (<strong>96.4%</strong>) followed by Visas (95.8%).
+    ID Cards (92.6%) and Driving Licenses (89.5%) perform below the overall average.</p>
+    <p>Despite the lower pass rate, ID Cards account for
+    <strong>{(df['data_type']=='ID_CARD').sum():,} attempts ({(df['data_type']=='ID_CARD').sum()/total*100:.0f}%)</strong>
+    of all attempts — making them the most impactful document type to optimise.</p>
+    <p>Within ID Cards, Mexico's Electoral IDs (95.8%) outperform National IDs (89.3%) by
+    6.5 percentage points. Whether pipeline blockages explain the ID card gap is analysed
+    in section 5.7.</p>
+  </div>
+</div>
+<div class="chart-box">{img_tag(CHART_SUBTYPE)}</div>
+
+<h3>By country</h3>
+<div class="chart-row">
+  <div class="chart-box">{img_tag(CHART_COUNTRY)}</div>
+  <div>
+    <p>There is a <strong>10.6 percentage-point gap</strong> in pass rates between Mexico
+    ({mex_total:,} attempts, {mex_total/total*100:.0f}%) and Argentina ({arg_total:,} attempts,
+    {arg_total/total*100:.0f}%).</p>
+    <p>Mexico's lower rate is partly driven by document mix — a higher share of National IDs
+    (89.3%) vs Electoral IDs (95.8%). RESIDENT_PERMIT_ID in Mexico achieves 96.0%, showing
+    the quality bar is reachable. Argentina's weakest performer is Driving Licenses (87.4%).</p>
+    <p>Whether pipeline blockages explain the MEX–ARG gap is analysed in section 5.7.</p>
+  </div>
+</div>
+</div>
+""")
+
+# ─── 5.6 Rejection Causes ────────────────────────────────────────────────────
+h(f"""<div class="page">
+<h2 id="rejection-causes">5.6 Rejection Causes</h2>
+<div class="section-intro">
+  Rejections are attributed to the first check that blocked the pipeline, then drilled into
+  the specific detail label returned by each check.
+</div>
+
+<h3>Root cause of rejections</h3>
+<div class="chart-box">{img_tag(CHART_FAIL_CHECK)}</div>
+<div class="finding red no-break">
+  <strong>Pipeline blockages — {n_pipeline_blocked:,} rejections ({n_pipeline_blocked/n_rejected*100:.1f}% of all rejections)</strong>
+  These users were not rejected because a check explicitly failed — the pipeline itself stalled.
+  <ul style="margin:8px 0 0 18px;font-size:13px;">
+    <li><strong>Extraction blocked ({n_extraction_blocked:,}):</strong> Usability passed but Extraction never ran, halting Image Checks, Data Checks, and Watchlist Screening.</li>
+    <li><strong>Usability WARNING cascaded ({n_usability_warn:,}):</strong> A usability warning was treated as a hard blocker for Extraction.</li>
+    <li><strong>Usability not executed ({n_usability_noexec:,}):</strong> The root check itself did not run.</li>
+  </ul>
+</div>
+<div class="finding red no-break">
+  <strong>Similarity failures — {n_similarity:,} rejections ({n_similarity/n_rejected*100:.1f}%)</strong>
+  Selfie does not match the document photo. Similarity runs independently of the document chain.
+</div>
+<div class="finding amber no-break">
+  <strong>Liveness failures — {n_liveness:,} rejections ({n_liveness/n_rejected*100:.1f}%)</strong>
+  System cannot confirm the user is live. Mostly UNDETERMINED (UX/connectivity) rather than
+  hard spoofing signals.
+</div>
+<div class="finding amber no-break">
+  <strong>Image check failures — {n_image:,} rejections ({n_image/n_rejected*100:.1f}%)</strong>
+  Documents flagged as manipulated or digital copies.
+</div>
+<div class="finding amber no-break">
+  <strong>Usability hard rejections — {n_usability:,} rejections ({n_usability/n_rejected*100:.1f}%)</strong>
+  Document image could not be processed; blocks the entire document chain.
+</div>
+
+<h3>Failure reasons by check</h3>
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>Usability Failures</h3>
+    {img_tag(CHART_USABILITY)}
+    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
+      REJECTED: MISSING_MANDATORY_DATAPOINTS ({usability_rejected_reasons.get('MISSING_MANDATORY_DATAPOINTS',0):,})
+      and image quality issues (BLURRED, GLARE, MISSING_PAGE) — addressable with better in-app
+      capture guidance.
+      WARNING: UNSUPPORTED_DOCUMENT_TYPE ({usability_warning_reasons.get('UNSUPPORTED_DOCUMENT_TYPE',0):,}) dominates
+      — users submitting document types not supported by the workflow. Catchable earlier with
+      a document selector.
+    </p>
+  </div>
+  <div class="chart-box">
+    <h3>Image Check Failures</h3>
+    {img_tag(CHART_IMAGE)}
+    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
+      MANIPULATED_DOCUMENT ({image_reasons.get('MANIPULATED_DOCUMENT',0):,}) is the dominant
+      failure reason — genuine fraud signals that should be escalated for manual review.
+      DIGITAL_COPY ({image_reasons.get('DIGITAL_COPY',0):,}) may indicate users photographing
+      a screen instead of a physical document.
+    </p>
+  </div>
+</div>
+<div class="chart-row">
+  <div class="chart-box">
+    <h3>Liveness Failures</h3>
+    {img_tag(CHART_LIVENESS)}
+    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
+      <code>LIVENESS_UNDETERMINED</code> ({liveness_reasons.get('liveness_UNDETERMINED',0):,} cases)
+      accounts for the vast majority. Per Jumio docs this means the system could not reach a
+      confident verdict — almost always a UX or connectivity issue, not spoofing.
+      A guided retry flow would recover most of these users.
+    </p>
+  </div>
+  <div class="chart-box">
+    <h3>Similarity Failures</h3>
+    {img_tag(CHART_SIMILARITY)}
+    <p style="font-size:12.5px;color:#6B7280;margin-top:8px;">
+      NO_MATCH ({similarity_reasons.get('NO_MATCH',0):,}) — selfie and document photo could
+      not be matched (hard rejection). NOT_POSSIBLE ({similarity_reasons.get('NOT_POSSIBLE',0):,})
+      — comparison cannot be determined (WARNING per docs). These {similarity_reasons.get('NOT_POSSIBLE',0):,}
+      users pass overall without a confirmed face match — a potential compliance gap.
+    </p>
+  </div>
+</div>
+</div>
+""")
+
+# ─── 5.7 Anomaly Investigation ────────────────────────────────────────────────
+h(f"""<div class="page">
+<h2 id="anomaly">5.7 Anomaly Investigation</h2>
+<div class="section-intro">
+  Three anomalies were identified in the pass rate analysis: a rejection spike in late August,
+  a lower pass rate in Mexico compared to Argentina, and a lower pass rate of ID Cards compared
+  to Passports. This section investigates whether pipeline blockages explain each one.
+</div>
+
+<h3>Q1 — Does the August rejection spike correlate with pipeline blockages?</h3>
+<div class="chart-box">{img_tag(CHART_ANOM_WEEKLY)}</div>
+<div class="finding {'amber' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'red'} no-break">
+  <strong>Pipeline blockages {'do not explain' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'partially explain'} the August spike</strong>
+  During the spike weeks (Aug 21 – Sep 3), pipeline blockages accounted for
+  <strong>{spike_blocked_pct:.1f}%</strong> of rejections, compared to
+  <strong>{baseline_blocked_pct:.1f}%</strong> during the baseline weeks — a
+  {'negligible' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'notable'}
+  {'difference' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else f'{abs(spike_blocked_pct - baseline_blocked_pct):.1f}pp shift'}.
+  {'The composition of rejections remained essentially unchanged: the spike was driven by a higher volume of <em>both</em> hard failures and pipeline blockages, not by a shift in their mix. This rules out a targeted pipeline degradation. More likely causes: a new user acquisition batch, increased fraud volume, or an app change affecting all check types.' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'The increase in pipeline blockages during the spike suggests a vendor-side or infrastructure issue may have contributed to the elevated rejection rate.'}
+</div>
+
+<h3>Q2 — Do pipeline blockages explain Mexico's lower pass rate vs Argentina?</h3>
+<div class="chart-box">{img_tag(CHART_ANOM_SEGMENTS)}</div>
+<div class="finding {'red' if mex_blocked_pct - arg_blocked_pct > 3 else 'amber'} no-break">
+  <strong>Pipeline blockages {'are' if mex_blocked_pct - arg_blocked_pct > 3 else 'are not'} a primary driver of the MEX–ARG gap</strong>
+  In Mexico, {mex_blocked_pct:.1f}% of total attempts end as pipeline blockages, vs
+  {arg_blocked_pct:.1f}% in Argentina — a {mex_blocked_pct - arg_blocked_pct:.1f}pp difference.
+  {'This gap is material and contributes meaningfully to the overall pass rate differential. Fixing MEX pipeline blockages would directly close part of the 10.6pp gap.' if mex_blocked_pct - arg_blocked_pct > 3 else 'The gap is small, suggesting pipeline blockages are not the primary driver of the MEX–ARG pass rate difference. The gap is more likely driven by document mix (National vs Electoral ID) and user/device quality differences.'}
+</div>
+
+<h3>Q3 — Do pipeline blockages explain why ID Cards underperform Passports?</h3>
+<div class="finding {'red' if idcard_blocked_pct - passport_blocked_pct > 2 else 'amber'} no-break">
+  <strong>Pipeline blockages {'significantly contribute to' if idcard_blocked_pct - passport_blocked_pct > 2 else 'partially explain'} the ID Card–Passport gap</strong>
+  For ID Cards, {idcard_blocked_pct:.1f}% of total attempts end as pipeline blockages, vs
+  {passport_blocked_pct:.1f}% for Passports — a {idcard_blocked_pct - passport_blocked_pct:.1f}pp difference.
+  ID Cards are structurally more susceptible to pipeline blockages: they require
+  front-and-back capture (increasing upload failure risk), have stricter field extraction requirements
+  across many more regional variants, and are more likely to fail usability checks due to wear and
+  regional printing differences. A share of the pass rate gap between ID Cards and Passports is
+  therefore attributable to pipeline architecture, not document quality alone.
+</div>
 </div>
 """)
 
