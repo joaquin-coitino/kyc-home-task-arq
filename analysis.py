@@ -587,61 +587,34 @@ CHART_ANOM_SEGMENTS = fig_to_b64(fig)
 # DATA QUALITY summary table
 # ════════════════════════════════════════════════════════════════════════════
 dq_issues = [
-    ("Incorrect label casing: liveness_UNDETERMINED",
+    ("Incorrect label casing",
      "1,243 rows use <code>liveness_UNDETERMINED</code> (lowercase prefix) in "
      "<code>liveness_decision_details</code>. Per Jumio docs the correct label is "
-     "<code>LIVENESS_UNDETERMINED</code> (all caps). The lowercase <code>liveness_</code> prefix "
-     "indicates the pipeline is prepending the check name to the label — a data pipeline bug.",
-     "Medium"),
-    ("liveness_UNDETERMINED in usability_decision_details",
+     "<code>LIVENESS_UNDETERMINED</code> (all caps).",
+     "We have assumed the correct value is LIVENESS_UNDETERMINED."),
+    ("Liveness value misrouted to usability",
      "278 rows have <code>liveness_UNDETERMINED</code> in <code>usability_decision_details</code> "
-     "with <code>usability_decision=WARNING</code>. Since Usability covers both ID and Selfie "
-     "credentials, this most likely reflects the <strong>selfie credential</strong> failing usability "
-     "with a liveness-undetermined result — consistent with these rows also having "
-     "<code>liveness_decision=REJECTED</code>. Could also reflect an API label change since 2023. "
-     "Worth clarifying with Jumio whether the API separates usability results by credential type.",
-     "Low"),
-    ("Non-standard top-level decision labels",
+     "and in <code>liveness_decision_details</code>. The value from the latter seems to have been "
+     "copied by mistake to the former.",
+     "We have assumed the usability check was passed and the failure occurred in the liveness check."),
+    ("PASSED with usability not executed",
+     "201 users have <code>usability_decision=NOT_EXECUTED</code> with detail <code>NOT_UPLOADED</code>, "
+     "yet all downstream checks (Extraction, Image Checks, Liveness, Similarity) passed.",
+     "We have assumed the usability check was passed instead of being not executed."),
+     ("Non-standard top-level decision labels",
      "12 rows use <code>OK</code> (8) or <code>APPROVED</code> (4) in <code>decision_label</code> "
      "instead of <code>PASSED</code>; 1 row has <code>PASSED</code> in "
      "<code>usability_decision_details</code> instead of <code>OK</code>.",
-     "Low"),
+     "We have assumed <code>OK</code>, <code>APPROVED</code> and <code>PASSED</code> to be " 
+     "equivalent to each other."),
     ("Typo in check decisions",
-     "3 rows use <code>PASSES</code> instead of <code>PASSED</code> across "
-     "<code>image_checks_decision</code>, <code>extraction_decision</code>, "
+     "3 rows use <code>PASSES</code> in <code>image_checks_decision</code>, <code>extraction_decision</code>, "
      "<code>data_checks_decision</code>.",
-     "Low"),
-    ("Missing watchlist screening for pipeline blockages",
-     f"2,889 rows have <code>NaN</code> in <code>watchlist_screening_decision</code> — all correspond "
-     "to cases where Extraction did not execute. Per Jumio docs, Watchlist Screening depends on "
-     "Usability, Extraction, and Image Checks, so this is expected — but it means these users "
-     "were never screened against sanctions/PEP lists before being rejected.",
-     "Medium"),
+     "We have assumed <code>PASSES</code> to be equal to <code>PASSED</code>."),
     ("decision_type vs decision_label mismatch",
      "1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> "
-     "in KYC_Details — the two datasets are inconsistent for this record. "
-     "All individual checks passed except <code>liveness_decision=REJECTED</code> (LIVENESS_UNDETERMINED).",
-     "Medium"),
-    ("PASSED overall with liveness=REJECTED",
-     "2 users have <code>liveness_decision=REJECTED</code> (LIVENESS_UNDETERMINED) but received "
-     "an overall PASSED decision. This may reflect a deliberate policy to treat LIVENESS_UNDETERMINED "
-     "as non-blocking — but if so, this policy should be documented and confirmed with compliance.",
-     "Medium"),
-    ("APPROVED despite similarity=NO_MATCH",
-     "1 user has <code>similarity_decision=REJECTED</code> (NO_MATCH) — selfie does not match ID — "
-     "but received a manual <code>APPROVED</code> override. Requires confirmation that this was "
-     "an intentional, documented compliance decision.",
-     "High"),
-    ("PASSED with usability=NOT_EXECUTED (NOT_UPLOADED) — 201 users",
-     "201 users have <code>usability_decision=NOT_EXECUTED</code> with detail <code>NOT_UPLOADED</code>, "
-     "yet all downstream checks (Extraction, Image Checks, Liveness, Similarity) passed. "
-     "This suggests a different verification workflow — possibly NFC or digital identity — "
-     "where the standard document upload is not required. Should be confirmed with Jumio.",
-     "Low"),
-    ("Implausible ages",
-     "Some <code>year_birth</code> values produce ages of 1 or 114 — likely input errors "
-     "during document capture or OCR extraction.",
-     "Low"),
+     "in KYC_Details — the two datasets are inconsistent for this record. ",
+     "We have assumed the user passed (insignificant impact anyway)."),
 ]
 
 
@@ -875,7 +848,7 @@ h("""<div class="page">
   <a href="#overview" class="toc-sub">5.1 Dataset Overview</a>
   <a href="#jumio-docs" class="toc-sub">5.2 Jumio Documentation</a>
   <a href="#qualitative" class="toc-sub">5.3 Qualitative Review of Jumio</a>
-  <a href="#data-quality" class="toc-sub">5.4 Data Quality</a>
+  <a href="#data-quality" class="toc-sub">5.4 Data Cleaning</a>
   <a href="#pass-rates" class="toc-sub">5.5 Pass Rates</a>
   <a href="#rejection-causes" class="toc-sub">5.6 Rejection Causes</a>
   <a href="#anomaly" class="toc-sub">5.7 Anomaly Investigation</a>
@@ -1184,27 +1157,24 @@ h("""<div class="page">
 </div>
 """)
 
-# ─── 5.4 Data Quality ────────────────────────────────────────────────────────
+# ─── 5.4 Data Cleaning ────────────────────────────────────────────────────────
 h("""<div class="page">
-<h2 id="data-quality">5.4 Data Quality</h2>
-  <p>Several data quality issues were identified in the dataset. While most are minor, they can
-  affect downstream analytics and should be addressed at the pipeline level.</p>
+<h2 id="data-quality">5.4 Data Cleaning</h2>
+  <p>Several data quality issues were identified in the dataset. They can
+  affect downstream analytics and thus we had to make a decision on how to correct the data.</p>
 <table>
   <tr>
     <th>Issue</th>
     <th>Description</th>
-    <th>Severity</th>
+    <th>Treatment</th>
   </tr>
 """)
-for title, desc, level in dq_issues:
-    h(f"  <tr><td><strong>{title}</strong></td><td>{desc}</td><td>{badge(level)}</td></tr>")
+for title, desc, fix in dq_issues:
+    h(f"  <tr><td><strong>{title}</strong></td><td>{desc}</td><td>{fix}</td></tr>")
 h("""</table>
-<p style="margin-top:16px;font-size:13px;color:#6B7280;">
-  The label casing and column misrouting issues are symptomatic of a pipeline bug that should be
-  fixed at the source. The watchlist and UNSUPPORTED_DOCUMENT_TYPE discrepancies should be
-  clarified with Jumio directly. Schema validation and data contract enforcement at the pipeline
-  level would prevent these issues from accumulating undetected.
-</p>
+  
+<h3>Conclusions</h3>
+  <p>The first 3 issues seem the result of pipeline problems that should be fixed at the source.</p> 
 </div>
 """)
 

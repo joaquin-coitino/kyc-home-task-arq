@@ -202,12 +202,12 @@ tr:nth-child(even) td { background: #F9FAFB; }
   <a href="#objective">1. Objective</a>
   <a href="#findings-recommendations">2. Findings &amp; Recommendations</a>
   <a href="#methodology">3. Methodology</a>
-  <a href="#limitations">4. Limitations &amp; Assumptions</a>
+  <a href="#limitations">4. Limitations</a>
   <a href="#analysis">5. Analysis</a>
   <a href="#overview" class="toc-sub">5.1 Dataset Overview</a>
   <a href="#jumio-docs" class="toc-sub">5.2 Jumio Documentation</a>
   <a href="#qualitative" class="toc-sub">5.3 Qualitative Review of Jumio</a>
-  <a href="#data-quality" class="toc-sub">5.4 Data Quality</a>
+  <a href="#data-quality" class="toc-sub">5.4 Data Cleaning</a>
   <a href="#pass-rates" class="toc-sub">5.5 Pass Rates</a>
   <a href="#rejection-causes" class="toc-sub">5.6 Rejection Causes</a>
   <a href="#anomaly" class="toc-sub">5.7 Anomaly Investigation</a>
@@ -373,19 +373,17 @@ tr:nth-child(even) td { background: #F9FAFB; }
 </div>
 
 <div class="page">
-<h2 id="limitations">4. Limitations &amp; Assumptions</h2>
-  <p>The following limitations and open questions were identified during the analysis.
+<h2 id="limitations">4. Limitations</h2>
+  <p>The following limitations were identified during the analysis.
   They do not invalidate the findings but should be considered when acting on recommendations.</p>
 <table>
-  <tr><th>Area</th><th>Limitation / Assumption</th></tr>
-  <tr><td><strong>Retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
-  <tr><td><strong>Workflow anomalies</strong></td><td>For 201 users, their usability check appears as not executed while at the same time the downstream checks have all passed. These may be users that have used a different workflow not shown on the dataset or, more likely, a data error.</td></tr>
-  <tr><td><strong>Manual override policy</strong></td><td>4 users appear as <code>APPROVED</code> in the data. The exact difference between that label and <code>PASSED</code> is unclear — <code>APPROVED</code> may represent a manual decision and <code>PASSED</code> an automated one.</td></tr>
-  <tr><td><strong>Liveness issue in usability check </strong></td><td>278 users show a liveness related failure in the usability check which is not expected as per Jumio's API documentation. This could reflect a pipeline bug or API change. We have assumed for these cases that the failure occurred at the liveness check stage and not at the usability one.</td></tr>
+  <tr><th>Area</th><th>Limitations</th></tr>
+  <tr><td><strong>Unclear retry behaviour</strong></td><td>The dataset contains one row per user with no retry history. It is unknown if some users re-attempted KYC and ultimately passed. Retry success rates would materially change the conversion impact estimates.</td></tr>
+  <tr><td><strong>Data quality issues</strong></td><td>Multiple instances have been found of data that seems incorrect. However, we are unable to confirm if they are actually errors and what the correct value should be.</td></tr>
   <tr><td><strong>API version changes</strong></td><td>The dataset is from 2023; the Jumio documentation used reflects the current API (2026). Some label names or decision behaviours may have changed. This introduces a risk of the data being misinterpreted.</td></tr>
-  <tr><td><strong>Time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
-  <tr><td><strong>Dataset consistency</strong></td><td>1 user appears as <code>PASSED</code> in KYC_Summary but <code>REJECTED</code> in KYC_Details. The authoritative source for this record is unclear but we have decided to use KYC_Summary.</td></tr>
-  <tr><td><strong>Colombia missing</strong></td><td>According to ARQ's website in July 2023, ARQ was live in Colombia (this can be seen using Wayback Machine). However, no records of Colombian users appear in the data set. At the time the company was known as DolarApp.</td></tr>
+  <tr><td><strong>Short time period</strong></td><td>The analysis covers ~2 months (Jul–Sep 2023). Seasonal patterns, long-term trends, and year-on-year comparisons are not possible with this data.</td></tr>
+  <tr><td><strong>No Colombian users</strong></td><td>According to ARQ's website in July 2023, ARQ (DolarApp) was live in Colombia (this can be seen using Wayback Machine). However, it is not known why there are no records of Colombian users in the data set.</td></tr>
+  <tr><td><strong>Narrow scope of data</strong></td><td>The dataset only gives a small view of ARQ's KYC flows. No access has been provided to logs, Jumio support, codebase, etc.. However, those elements are key to diagnosing and solving the problem.</td></tr>
 </table>
 </div>
 
@@ -502,33 +500,26 @@ tr:nth-child(even) td { background: #F9FAFB; }
 </div>
 
 <div class="page">
-<h2 id="data-quality">5.4 Data Quality</h2>
-  <p>Several data quality issues were identified in the dataset. While most are minor, they can
-  affect downstream analytics and should be addressed at the pipeline level.</p>
+<h2 id="data-quality">5.4 Data Cleaning</h2>
+  <p>Several data quality issues were identified in the dataset. They can
+  affect downstream analytics and thus we had to make a decision on how to correct the data.</p>
 <table>
   <tr>
     <th>Issue</th>
     <th>Description</th>
-    <th>Severity</th>
+    <th>Treatment</th>
   </tr>
 
-  <tr><td><strong>Incorrect label casing: liveness_UNDETERMINED</strong></td><td>1,243 rows use <code>liveness_UNDETERMINED</code> (lowercase prefix) in <code>liveness_decision_details</code>. Per Jumio docs the correct label is <code>LIVENESS_UNDETERMINED</code> (all caps). The lowercase <code>liveness_</code> prefix indicates the pipeline is prepending the check name to the label — a data pipeline bug.</td><td><span class="badge medium">Medium</span></td></tr>
-  <tr><td><strong>liveness_UNDETERMINED in usability_decision_details</strong></td><td>278 rows have <code>liveness_UNDETERMINED</code> in <code>usability_decision_details</code> with <code>usability_decision=WARNING</code>. Since Usability covers both ID and Selfie credentials, this most likely reflects the <strong>selfie credential</strong> failing usability with a liveness-undetermined result — consistent with these rows also having <code>liveness_decision=REJECTED</code>. Could also reflect an API label change since 2023. Worth clarifying with Jumio whether the API separates usability results by credential type.</td><td><span class="badge low">Low</span></td></tr>
-  <tr><td><strong>Non-standard top-level decision labels</strong></td><td>12 rows use <code>OK</code> (8) or <code>APPROVED</code> (4) in <code>decision_label</code> instead of <code>PASSED</code>; 1 row has <code>PASSED</code> in <code>usability_decision_details</code> instead of <code>OK</code>.</td><td><span class="badge low">Low</span></td></tr>
-  <tr><td><strong>Typo in check decisions</strong></td><td>3 rows use <code>PASSES</code> instead of <code>PASSED</code> across <code>image_checks_decision</code>, <code>extraction_decision</code>, <code>data_checks_decision</code>.</td><td><span class="badge low">Low</span></td></tr>
-  <tr><td><strong>Missing watchlist screening for pipeline blockages</strong></td><td>2,889 rows have <code>NaN</code> in <code>watchlist_screening_decision</code> — all correspond to cases where Extraction did not execute. Per Jumio docs, Watchlist Screening depends on Usability, Extraction, and Image Checks, so this is expected — but it means these users were never screened against sanctions/PEP lists before being rejected.</td><td><span class="badge medium">Medium</span></td></tr>
-  <tr><td><strong>decision_type vs decision_label mismatch</strong></td><td>1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> in KYC_Details — the two datasets are inconsistent for this record. All individual checks passed except <code>liveness_decision=REJECTED</code> (LIVENESS_UNDETERMINED).</td><td><span class="badge medium">Medium</span></td></tr>
-  <tr><td><strong>PASSED overall with liveness=REJECTED</strong></td><td>2 users have <code>liveness_decision=REJECTED</code> (LIVENESS_UNDETERMINED) but received an overall PASSED decision. This may reflect a deliberate policy to treat LIVENESS_UNDETERMINED as non-blocking — but if so, this policy should be documented and confirmed with compliance.</td><td><span class="badge medium">Medium</span></td></tr>
-  <tr><td><strong>APPROVED despite similarity=NO_MATCH</strong></td><td>1 user has <code>similarity_decision=REJECTED</code> (NO_MATCH) — selfie does not match ID — but received a manual <code>APPROVED</code> override. Requires confirmation that this was an intentional, documented compliance decision.</td><td><span class="badge high">High</span></td></tr>
-  <tr><td><strong>PASSED with usability=NOT_EXECUTED (NOT_UPLOADED) — 201 users</strong></td><td>201 users have <code>usability_decision=NOT_EXECUTED</code> with detail <code>NOT_UPLOADED</code>, yet all downstream checks (Extraction, Image Checks, Liveness, Similarity) passed. This suggests a different verification workflow — possibly NFC or digital identity — where the standard document upload is not required. Should be confirmed with Jumio.</td><td><span class="badge low">Low</span></td></tr>
-  <tr><td><strong>Implausible ages</strong></td><td>Some <code>year_birth</code> values produce ages of 1 or 114 — likely input errors during document capture or OCR extraction.</td><td><span class="badge low">Low</span></td></tr>
+  <tr><td><strong>Incorrect label casing</strong></td><td>1,243 rows use <code>liveness_UNDETERMINED</code> (lowercase prefix) in <code>liveness_decision_details</code>. Per Jumio docs the correct label is <code>LIVENESS_UNDETERMINED</code> (all caps).</td><td>We have assumed the correct value is LIVENESS_UNDETERMINED.</td></tr>
+  <tr><td><strong>Liveness value misrouted to usability</strong></td><td>278 rows have <code>liveness_UNDETERMINED</code> in <code>usability_decision_details</code> and in <code>liveness_decision_details</code>. The value from the latter seems to have been copied by mistake to the former.</td><td>We have assumed the usability check was passed and the failure occurred in the liveness check.</td></tr>
+  <tr><td><strong>PASSED with usability not executed</strong></td><td>201 users have <code>usability_decision=NOT_EXECUTED</code> with detail <code>NOT_UPLOADED</code>, yet all downstream checks (Extraction, Image Checks, Liveness, Similarity) passed.</td><td>We have assumed the usability check was passed instead of being not executed.</td></tr>
+  <tr><td><strong>Non-standard top-level decision labels</strong></td><td>12 rows use <code>OK</code> (8) or <code>APPROVED</code> (4) in <code>decision_label</code> instead of <code>PASSED</code>; 1 row has <code>PASSED</code> in <code>usability_decision_details</code> instead of <code>OK</code>.</td><td>We have assumed <code>OK</code>, <code>APPROVED</code> and <code>PASSED</code> to be equivalent to each other.</td></tr>
+  <tr><td><strong>Typo in check decisions</strong></td><td>3 rows use <code>PASSES</code> in <code>image_checks_decision</code>, <code>extraction_decision</code>, <code>data_checks_decision</code>.</td><td>We have assumed <code>PASSES</code> to be equal to <code>PASSED</code>.</td></tr>
+  <tr><td><strong>decision_type vs decision_label mismatch</strong></td><td>1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> in KYC_Details — the two datasets are inconsistent for this record. </td><td>We have assumed the user passed (insignificant impact anyway).</td></tr>
 </table>
-<p style="margin-top:16px;font-size:13px;color:#6B7280;">
-  The label casing and column misrouting issues are symptomatic of a pipeline bug that should be
-  fixed at the source. The watchlist and UNSUPPORTED_DOCUMENT_TYPE discrepancies should be
-  clarified with Jumio directly. Schema validation and data contract enforcement at the pipeline
-  level would prevent these issues from accumulating undetected.
-</p>
+  
+<h3>Conclusions</h3>
+  <p>The first 3 issues seem the result of pipeline problems that should be fixed at the source.</p> 
 </div>
 
 <div class="page">
