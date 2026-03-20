@@ -909,45 +909,40 @@ h("""<div class="page">
 # ─── Findings & Recommendations ───────────────────────────────────────────────
 h(f"""<div class="page">
 <h2 id="findings-recommendations">2. Findings &amp; Recommendations</h2>
-<div class="section-intro">
-  Each finding is paired with a specific recommendation. Findings are ordered by estimated
-  business impact.
-</div>
+  <p>Each finding is paired with a specific recommendation. Findings are ordered by estimated
+  business impact.</p>
 
 <div class="fr-pair no-break">
   <div class="fr-finding">
     <span class="fr-label">Finding 1 — Conversion</span>
     <strong>Pipeline blockages account for {n_pipeline_blocked/n_rejected*100:.0f}% of all rejections</strong>
     <p>{pct(n_pipeline_blocked, n_rejected)} of rejections occurred because the Extraction check never ran,
-    stalling all downstream document checks. These are not genuine verification failures —
-    they are infrastructure or UX problems. Sub-causes: Extraction blocked despite Usability passing
-    ({n_extraction_blocked:,}), Usability WARNING cascading downstream ({n_usability_warn:,}),
-    and Usability not executing at all ({n_usability_noexec:,}).</p>
+    stalling all downstream document checks. These are not genuine verification failures but rather
+    infrastructure problems.</p>
   </div>
   <div class="fr-rec">
     <span class="fr-label">Recommendation</span>
     <strong>Diagnose and fix pipeline blockages</strong>
-    <p>Investigate vendor API timeouts, upload failures, and whether Usability WARNINGs should
-    truly block Extraction. Implement retry logic and pre-submission image quality checks in-app.
-    Recovering 50% of these cases would add ~{int(n_pipeline_blocked*0.5):,} passed users.</p>
+    <p>Investigate vendor API timeouts, upload failures, and whether Usability WARNINGs for unsupported docs should
+    truly block Extraction. Implement retry logic and pre-submission image quality checks in-app.</p>
   </div>
 </div>
 
 <div class="fr-pair no-break">
   <div class="fr-finding">
     <span class="fr-label">Finding 2 — Conversion</span>
-    <strong>Mexico's pass rate (81.5%) trails Argentina (92.1%) by 10.6 percentage points</strong>
-    <p>Mexican users are disproportionately rejected. The gap is partly driven by MEX National ID
-    having an 89.3% pass rate vs. Electoral ID at 95.8% — a 6.5pp difference within the same market.
-    UNSUPPORTED_DOCUMENT_TYPE (509 usability WARNINGs) also suggests users are submitting
-    unsupported document types that could be intercepted earlier.</p>
+    <strong>Some document types are dealing to more failures</strong>
+    <p>MEX National ID have an 89.3% pass rate vs. Electoral ID at 95.8%. 
+    7.5% of failures are attributed to users uploading an unsupported document. 
+    Document photo issues such as glare, blurr, data is hard to read, etc. represent over 10% of failures.   
+    </p>
   </div>
   <div class="fr-rec">
     <span class="fr-label">Recommendation</span>
-    <strong>Guide Mexican users toward Electoral IDs and add a document type selector</strong>
+    <strong>Guide users during document upload</strong>
     <p>Add in-app guidance recommending Electoral ID as the preferred document for Mexican users.
-    Introduce a document type selector before the capture step to prevent unsupported documents
-    from reaching the pipeline at all.</p>
+    Make it clear for users what documents are not supported. Provide better guidance on how to 
+    take a photo of the document.</p>
   </div>
 </div>
 
@@ -956,17 +951,17 @@ h(f"""<div class="page">
     <span class="fr-label">Finding 3 — Conversion</span>
     <strong>{liveness_reasons.get('liveness_UNDETERMINED',0):,} liveness rejections are non-conclusive</strong>
     <p>Of {(df['liveness_decision']=='REJECTED').sum():,} liveness rejections, {liveness_reasons.get('liveness_UNDETERMINED',0):,}
-    are <code>LIVENESS_UNDETERMINED</code> — per Jumio docs this means the system could not reach a
-    confident verdict, not that the user failed. These are almost always caused by poor lighting,
-    glasses, or partial face visibility rather than spoofing attempts.</p>
+    are <code>LIVENESS_UNDETERMINED</code>. Per Jumio docs this means the system could not reach a
+    confident verdict, not that the user failed. These are mostly caused by poor lighting,
+    glasses, movements not done as expected, or partial face visibility rather than spoofing attempts.</p>
   </div>
   <div class="fr-rec">
     <span class="fr-label">Recommendation</span>
     <strong>Introduce a guided retry flow for LIVENESS_UNDETERMINED</strong>
     <p>Instead of hard-rejecting these users, prompt them to retry with specific guidance
-    (better lighting, remove glasses, ensure full face is visible). This distinction
+    (better lighting, remove glasses, move head in certain direction, ensure full face is visible). This distinction
     between UNDETERMINED and hard fraud signals (e.g. ID_USED_AS_SELFIE) should
-    drive different user flows.</p>
+    drive different user flows. This might require a discussion with Jumio or considering a different vendor.</p>
   </div>
 </div>
 
@@ -989,54 +984,16 @@ h(f"""<div class="page">
 
 <div class="fr-pair no-break">
   <div class="fr-finding">
-    <span class="fr-label">Finding 5 — Compliance</span>
-    <strong>69 users matched a sanctions/PEP watchlist and all were passed</strong>
-    <p>Per Jumio docs, a Watchlist WARNING carries the label <strong>ALERT</strong>, meaning
-    the user was found on one or more global or regional sanctions lists or is a
-    Politically Exposed Person. All 69 matches received an overall PASSED outcome.
-    It is unclear from the data whether a manual review process exists for these cases.</p>
-  </div>
-  <div class="fr-rec">
-    <span class="fr-label">Recommendation</span>
-    <strong>Establish a documented manual review process for watchlist ALERT matches</strong>
-    <p>Confirm with the compliance team that each ALERT match is individually reviewed,
-    that a documented decision rationale exists, and that the current pass-through
-    policy is explicitly approved by compliance leadership.</p>
-  </div>
-</div>
-
-<div class="fr-pair no-break">
-  <div class="fr-finding">
-    <span class="fr-label">Finding 6 — Compliance</span>
-    <strong>Manual overrides lack a documented policy</strong>
-    <p>1 user was manually APPROVED despite <code>similarity=NO_MATCH</code> — their selfie
-    did not match their ID. 2 users with <code>liveness=REJECTED</code> (LIVENESS_UNDETERMINED)
-    received an overall PASSED. There is no evidence in the data of a formal override policy
-    or audit trail for these decisions.</p>
-  </div>
-  <div class="fr-rec">
-    <span class="fr-label">Recommendation</span>
-    <strong>Audit and formalise manual override decisions</strong>
-    <p>Each manual override should have a documented rationale, an authorised approver, and
-    be logged for audit purposes. If LIVENESS_UNDETERMINED is intentionally treated as
-    non-blocking, this policy should be formalised in writing with compliance sign-off.</p>
-  </div>
-</div>
-
-<div class="fr-pair no-break">
-  <div class="fr-finding">
-    <span class="fr-label">Finding 7 — Data Quality</span>
+    <span class="fr-label">Finding 5 — Data Quality</span>
     <strong>Multiple data quality issues indicate gaps in pipeline validation</strong>
-    <p>Non-standard decision labels (OK, APPROVED, PASSES), inconsistent label casing
-    (<code>liveness_UNDETERMINED</code> vs <code>LIVENESS_UNDETERMINED</code>), and
-    implausible age values suggest the data pipeline lacks schema validation and
-    output contracts with the vendor.</p>
+    <p>Typos, inconsistent casing, misrouting of data to the wrong column, etc. suggest the data pipeline lacks schema validation and
+    output contracts with the vendor and internal services.</p>
   </div>
   <div class="fr-rec">
     <span class="fr-label">Recommendation</span>
     <strong>Enforce data quality at the pipeline level</strong>
     <p>Add schema validation to reject non-standard label values in real time.
-    Define and enforce a data contract with Jumio covering all expected field
+    Define and enforce a data contract with Jumio and internal services covering all expected field
     values, ensuring analytics remain reliable as the API evolves.</p>
   </div>
 </div>
@@ -1279,8 +1236,8 @@ h(f"""<div class="page">
 <div class="finding blue no-break">
   <strong>Root Cause of Analysis </strong>
   <ul style="margin:0 0 0 18px;line-height:1.8;">
-    <li> Impact of pipeline blockage on August spike. </li>
-    <li> Impact of pipeline blockage on pass rate difference between Argentina and Mexico. </li>
+    <li> We will look at the cause of the August spike. </li>
+    <li> We will look at the cause of the pass rate difference between Argentina and Mexico. </li>
   </ul>
   </div>
 </div>
@@ -1291,13 +1248,13 @@ h(f"""<div class="page">
 <h2 id="rejection-causes">5.6 Rejection Causes</h2>
 <p>Rejections are attributed to the first check that blocked the pipeline.</p>
 <div class="chart-box">{img_tag(CHART_FAIL_CHECK)}</div>
-<div class="finding red no-break">
+<div class="finding blue no-break">
   <strong>Pipeline blockages: {n_pipeline_blocked:,} rejections ({n_pipeline_blocked/n_rejected*100:.1f}% of all rejections)</strong>
   These users were not rejected because a check explicitly failed but instead because the pipeline itself stalled.
   <ul style="margin:8px 0 0 18px;font-size:13px;">
     <li><strong>Extraction blocked ({n_extraction_blocked:,}):</strong> Usability passed but Extraction never ran, halting Image Checks, Data Checks, and Watchlist Screening.</li>
-    <li><strong>Usability WARNING cascaded ({n_usability_warn:,}):</strong> A usability warning was treated as a hard blocker for Extraction.</li>
-    <li><strong>Usability not executed ({n_usability_noexec:,}):</strong> The root check itself did not run.</li>
+    <li><strong>Usability WARNING cascaded ({n_usability_warn:,}):</strong> A usability warning was treated as a hard blocker for Extraction because document was unsupported.</li>
+    <li><strong>Usability not executed ({n_usability_noexec:,}):</strong> The root check itself did not run. Could be that the user did not provide the document or that there is a bug preventing processing.</li>
   </ul>
 </div>
 
@@ -1340,12 +1297,12 @@ h(f"""<div class="page">
 # ─── 5.7 Anomaly Investigation ────────────────────────────────────────────────
 h(f"""<div class="page">
 <h2 id="anomaly">5.7 Anomaly Investigation</h2>
-  <p>We will review the impact of pipeline blockages on the rejection spike in late August and
+  <p>We will review the impact of pipeline blockages vs hard rejections on the rejection spike in late August and
   a lower pass rate in Mexico compared to Argentina. </p>
 
-<h3>Pipeline blockage impact on August rejection spike</h3>
+<h3>August Rejection Spike</h3>
 <div class="chart-box">{img_tag(CHART_ANOM_WEEKLY)}</div>
-<div class="finding {'amber' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'red'} no-break">
+<div class="finding blue no-break">
   <strong>Pipeline blockages {'do not explain' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'partially explain'} the August spike</strong>
   During the spike weeks (Aug 21 – Sep 3), pipeline blockages accounted for <strong>{spike_blocked_pct:.1f}%</strong> of rejections, compared to <strong>{baseline_blocked_pct:.1f}%</strong> during the baseline weeks, a
   {'negligible' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'notable'}
@@ -1353,9 +1310,9 @@ h(f"""<div class="page">
   {'The composition of rejections remained essentially unchanged: the spike was driven by a higher volume of <em>both</em> hard failures and pipeline blockages, not by a shift in their mix. This rules out a targeted pipeline degradation. More likely causes: a new user acquisition batch, increased fraud volume, or an app change affecting all check types.' if abs(spike_blocked_pct - baseline_blocked_pct) < 5 else 'The increase in pipeline blockages during the spike suggests a vendor-side or infrastructure issue may have contributed to the elevated rejection rate.'}
 </div>
 
-<h3>Pipeline blockage impact on Mexico vs Argentina</h3>
+<h3>Mexico vs Argentina Pass Rate</h3>
 <div class="chart-box">{img_tag(CHART_ANOM_SEGMENTS)}</div>
-<div class="finding {'red' if mex_blocked_pct - arg_blocked_pct > 3 else 'amber'} no-break">
+<div class="finding blue no-break">
   <strong>Pipeline blockages {'are' if mex_blocked_pct - arg_blocked_pct > 3 else 'are not'} a primary driver of the MEX–ARG gap</strong>
   In Mexico, {mex_blocked_pct:.1f}% of total attempts end as pipeline blockages, vs
   {arg_blocked_pct:.1f}% in Argentina — a {mex_blocked_pct - arg_blocked_pct:.1f}pp difference.
