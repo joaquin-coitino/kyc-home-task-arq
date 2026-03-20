@@ -654,7 +654,7 @@ dq_issues = [
      "We have assumed <code>PASSES</code> to be equal to <code>PASSED</code>."),
     ("decision_type vs decision_label mismatch",
      "1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> "
-     "in KYC_Details — the two datasets are inconsistent for this record. ",
+     "in KYC_Details which means the two datasets are inconsistent for this record. ",
      "We have assumed the user passed (insignificant impact anyway)."),
 ]
 
@@ -931,7 +931,7 @@ h(f"""<div class="page">
 <div class="fr-pair no-break">
   <div class="fr-finding">
     <span class="fr-label">Finding 2 — Conversion</span>
-    <strong>Some document types are dealing to more failures</strong>
+    <strong>Some document types are leading to more failures</strong>
     <p>MEX National ID have an 89.3% pass rate vs. Electoral ID at 95.8%. 
     7.5% of failures are attributed to users uploading an unsupported document. 
     Document photo issues such as glare, blurr, data is hard to read, etc. represent over 10% of failures.   
@@ -1158,7 +1158,7 @@ h("""<div class="page">
 <ul style="margin:0 0 0 18px;line-height:1.8;">
   <li>Personal Pay selected Jumio primarily on cost.</li>
   <li>FaceTec is the main competitor (widely used by Mercado Libre and major banks).</li>
-  <li>National ID is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 86% of all attempts).</li>
+  <li>National ID is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 92% of documents).</li>
   <li>Jumio's document capture is aggressive in rejecting images that do not meet its quality bar. This creates friction.</li>
   <li>False positives were a concern prior to SLA negotiations; once managed, they came within agreed limits.</li>
 </ul>
