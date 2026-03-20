@@ -1208,7 +1208,7 @@ h(f"""<div class="page">
 <div class="chart-row">
   <div class="chart-box">{img_tag(CHART_DOC_TYPE)}</div>
   <div>
-    <p>Passports achieve the higher pass rates (<strong>96.4%</strong>) compared to
+    <p>Passports have the higher pass rates (96.4%) compared to
     ID Cards (92.6%). This is understandable as passports are more standardised.</p>
     <p>Within ID Cards, Mexico's Electoral IDs (95.8%) outperform National IDs (89.3%) by
     6.5 percentage points.</p>
@@ -1315,7 +1315,7 @@ h(f"""<div class="page">
 <div class="finding blue no-break">
   <strong>Pipeline blockages {'are' if mex_blocked_pct - arg_blocked_pct > 3 else 'are not'} a primary driver of the MEX–ARG gap</strong>
   In Mexico, {mex_blocked_pct:.1f}% of total attempts end as pipeline blockages, vs
-  {arg_blocked_pct:.1f}% in Argentina — a {mex_blocked_pct - arg_blocked_pct:.1f}pp difference.
+  {arg_blocked_pct:.1f}% in Argentina which is a {mex_blocked_pct - arg_blocked_pct:.1f}pp difference.
   {'This gap is material and contributes meaningfully to the overall pass rate differential. Fixing MEX pipeline blockages would directly close part of the 10.6pp gap.' if mex_blocked_pct - arg_blocked_pct > 3 else 'The gap is small, suggesting pipeline blockages are not the primary driver of the MEX–ARG pass rate difference. The gap is more likely driven by document mix (National vs Electoral ID) and user/device quality differences.'}
 </div>
 </div>
