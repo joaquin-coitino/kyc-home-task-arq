@@ -193,11 +193,30 @@ country_stats = df.groupby("data_issuing_country").apply(
 country_stats["pass_rate"] = country_stats["passed"] / country_stats["total"] * 100
 
 # ── Sub-type pass rates ───────────────────────────────────────────────────────
-sub_stats = df.groupby(["data_issuing_country", "data_sub_type"]).apply(
+sub_stats = df[df["data_type"] == "ID_CARD"].groupby(["data_issuing_country", "data_sub_type"]).apply(
     lambda g: pd.Series({"total": len(g), "passed": (g["decision_type"] == "PASSED").sum()})
 ).reset_index()
 sub_stats["pass_rate"] = sub_stats["passed"] / sub_stats["total"] * 100
 sub_stats = sub_stats[sub_stats["total"] >= 50]
+
+# ── Pass rate by age group ────────────────────────────────────────────────────
+AGE_BINS   = [0, 17, 24, 34, 44, 54, 64, 120]
+AGE_LABELS = ["<18", "18–24", "25–34", "35–44", "45–54", "55–64", "65+"]
+df["age_group"] = pd.cut(df["age"], bins=AGE_BINS, labels=AGE_LABELS)
+age_stats = df.groupby("age_group", observed=False).apply(
+    lambda g: pd.Series({"total": len(g), "passed": (g["decision_type"] == "PASSED").sum()})
+).reset_index()
+age_stats["pass_rate"] = age_stats["passed"] / age_stats["total"] * 100
+# Append Unknown (no year_birth) as an explicit row
+_unk        = df[df["age_group"].isna()]
+_unk_total  = len(_unk)
+_unk_passed = (_unk["decision_type"] == "PASSED").sum()
+age_stats = pd.concat([age_stats, pd.DataFrame([{
+    "age_group": "Unknown",
+    "total":     _unk_total,
+    "passed":    _unk_passed,
+    "pass_rate": _unk_passed / _unk_total * 100,
+}])], ignore_index=True)
 
 # ── Failure reason breakdowns ─────────────────────────────────────────────────
 def reasons_by_decision(col_decision, col_details, decision_type,
@@ -535,9 +554,34 @@ for ax, country in zip(axes, ["MEX", "ARG"]):
                 f"{row['pass_rate']:.1f}%  n={row['total']:,}",
                 va="center", fontsize=8.5, color=GRAY)
     ax.set_xlabel("Pass rate (%)")
-    ax.set_title(f"{country} — Pass Rate by Document Subtype")
+    ax.set_title(f"{country} — ID Card Pass Rate by Subtype")
 plt.tight_layout()
 CHART_SUBTYPE = fig_to_b64(fig)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# CHART 8 — Pass rate by age group
+# ════════════════════════════════════════════════════════════════════════════
+fig, ax = plt.subplots(figsize=(9, 3.5))
+def _age_bar_color(label, rate):
+    if label in ("<18", "Unknown"):
+        return "#9CA3AF"   # neutral grey — not a true pass-rate cohort
+    return PASS_GREEN if rate >= 92 else WARN_AMBER if rate >= 88 else FAIL_RED
+bar_colors = [_age_bar_color(str(row["age_group"]), row["pass_rate"])
+              for _, row in age_stats.iterrows()]
+bars = ax.bar(age_stats["age_group"].astype(str), age_stats["pass_rate"],
+              color=bar_colors, edgecolor="none", width=0.6)
+ax.set_ylim(0, 105)
+for i, (_, row) in enumerate(age_stats.iterrows()):
+    rate = row["pass_rate"]
+    ax.text(i, rate + 1.5,
+            f"{rate:.1f}%\n(n={row['total']:,})",
+            ha="center", va="bottom", fontsize=8.5, color=GRAY)
+ax.set_xlabel("Age group")
+ax.set_ylabel("Pass rate (%)")
+ax.set_title("Pass Rate by Age Group")
+plt.tight_layout()
+CHART_AGE = fig_to_b64(fig)
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1086,7 +1130,7 @@ h(f"""<div class="page">
 <h2 id="jumio-docs">5.2 Jumio Documentation</h2>
   <p>Jumio's documentation explains the different checks that are part of the KYC pipeline.</p>
 
-<h3>Check overview</h3>
+<h3>Check Overview</h3>
 <table>
   <tr><th>Check</th><th>What it tests</th><th>Possible decisions</th></tr>
   <tr>
@@ -1126,7 +1170,7 @@ h(f"""<div class="page">
   </tr>
 </table>
 
-<h3>Check dependency graph</h3>
+<h3>Check Dependency Graph</h3>
 <p>Some checks can only run once another check has run.</p>
 <div class="chart-box">{img_tag(CHART_DAG)}</div>
 </div>
@@ -1143,7 +1187,7 @@ h("""<div class="page">
 <ul style="margin:0 0 0 18px;line-height:1.8;">
   <li>Personal Pay selected Jumio primarily on cost.</li>
   <li>FaceTec is the main competitor (widely used by Mercado Libre and major banks).</li>
-  <li>DNI (national ID) is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 86% of all attempts).</li>
+  <li>National ID is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 86% of all attempts).</li>
   <li>Jumio's document capture is aggressive in rejecting images that do not meet its quality bar. This creates friction.</li>
   <li>False positives were a concern prior to SLA negotiations; once managed, they came within agreed limits.</li>
 </ul>
@@ -1185,7 +1229,7 @@ arg_total = (df["data_issuing_country"] == "ARG").sum()
 h(f"""<div class="page">
 <h2 id="pass-rates">5.5 Pass Rates</h2>
 <div class="section-intro">
-  Pass rates are analysed across three dimensions: time (weekly trend), document type, and country.
+  Pass rates are analysed across four dimensions: time (weekly trend), country, document type, age.
 </div>
 
 <h3>Trend over time</h3>
@@ -1193,38 +1237,47 @@ h(f"""<div class="page">
 <div class="finding red no-break">
   <strong>Rejection spike: Aug 21 – Sep 3</strong>
   The rejection rate jumped from a baseline of ~{baseline_rate:.1f}% to
-  {spike_rates[0]:.1f}% (Aug 21–27) and {spike_rates[1]:.1f}% (Aug 28–Sep 3) —
+  {spike_rates[0]:.1f}% (Aug 21–27) and {spike_rates[1]:.1f}% (Aug 28–Sep 3), i.e.:
   a {spike_rates[1]/baseline_rate:.1f}× increase. The rate partially recovered but remained
-  above baseline through the end of the observation period. Root cause is investigated in section 5.7.
+  above baseline through the end of the observation period.
 </div>
 
-<h3>By document type</h3>
-<div class="chart-row">
-  <div class="chart-box">{img_tag(CHART_DOC_TYPE)}</div>
-  <div>
-    <p>Passports achieve the highest pass rate (<strong>96.4%</strong>) followed by Visas (95.8%).
-    ID Cards (92.6%) and Driving Licenses (89.5%) perform below the overall average.</p>
-    <p>Despite the lower pass rate, ID Cards account for
-    <strong>{(df['data_type']=='ID_CARD').sum():,} attempts ({(df['data_type']=='ID_CARD').sum()/total*100:.0f}%)</strong>
-    of all attempts — making them the most impactful document type to optimise.</p>
-    <p>Within ID Cards, Mexico's Electoral IDs (95.8%) outperform National IDs (89.3%) by
-    6.5 percentage points. Whether pipeline blockages explain the ID card gap is analysed
-    in section 5.7.</p>
-  </div>
-</div>
-<div class="chart-box">{img_tag(CHART_SUBTYPE)}</div>
-
-<h3>By country</h3>
+<h3>By Country</h3>
 <div class="chart-row">
   <div class="chart-box">{img_tag(CHART_COUNTRY)}</div>
   <div>
     <p>There is a <strong>10.6 percentage-point gap</strong> in pass rates between Mexico
     ({mex_total:,} attempts, {mex_total/total*100:.0f}%) and Argentina ({arg_total:,} attempts,
     {arg_total/total*100:.0f}%).</p>
-    <p>Mexico's lower rate is partly driven by document mix — a higher share of National IDs
-    (89.3%) vs Electoral IDs (95.8%). RESIDENT_PERMIT_ID in Mexico achieves 96.0%, showing
-    the quality bar is reachable. Argentina's weakest performer is Driving Licenses (87.4%).</p>
-    <p>Whether pipeline blockages explain the MEX–ARG gap is analysed in section 5.7.</p>
+  </div>
+</div>
+
+<h3>By Document Type</h3>
+<div class="chart-row">
+  <div class="chart-box">{img_tag(CHART_DOC_TYPE)}</div>
+  <div>
+    <p>Passports achieve the higher pass rates (<strong>96.4%</strong>) compared to
+    ID Cards (92.6%). This is understandable as ID Cards are more varied.</p>
+    <p>Within ID Cards, Mexico's Electoral IDs (95.8%) outperform National IDs (89.3%) by
+    6.5 percentage points.</p>
+  </div>
+</div>
+<div class="chart-box"><p style="font-size:12px;color:#6B7280;margin-bottom:6px;">ID Cards only as they are by far the most common document type ({(df['data_type']=='ID_CARD').sum():,} attempts, {(df['data_type']=='ID_CARD').sum()/total*100:.0f}% of all attempts).</p>{img_tag(CHART_SUBTYPE)}</div>
+
+<h3>By Age Group</h3>
+<div class="chart-row">
+  <div class="chart-box">{img_tag(CHART_AGE)}</div>
+  <div>
+    <p>Among adult cohorts, pass rates are <strong>broadly stable</strong>, ranging from
+    <strong>{age_stats.loc[age_stats['age_group']=='65+','pass_rate'].values[0]:.1f}%</strong> (65+) to
+    <strong>{age_stats.loc[age_stats['age_group']=='18–24','pass_rate'].values[0]:.1f}%</strong> (18–24), which is
+    a spread of only {age_stats.loc[age_stats['age_group']=='18–24','pass_rate'].values[0] - age_stats.loc[age_stats['age_group']=='65+','pass_rate'].values[0]:.1f} percentage points.</p>
+    <p><strong>&lt;18 ({age_stats.loc[age_stats['age_group']=='<18','total'].values[0]:,} users,
+    {age_stats.loc[age_stats['age_group']=='<18','pass_rate'].values[0]:.1f}% pass rate):</strong>
+    Best case and mostly likely scenario, this is a data quality issue. Worst case scenario minors are being onboarded.</p>
+    <p><strong>Unknown ({age_stats.loc[age_stats['age_group']=='Unknown','total'].values[0]:,} users,
+    {age_stats.loc[age_stats['age_group']=='Unknown','pass_rate'].values[0]:.1f}% pass rate):</strong>
+    No <code>year_birth</code> recorded. It is concerning there are any passes without a year of birth.</p>
   </div>
 </div>
 </div>
