@@ -998,6 +998,21 @@ h(f"""<div class="page">
   </div>
 </div>
 
+<div class="fr-pair no-break">
+  <div class="fr-finding">
+    <span class="fr-label">Finding 6 — Compliance</span>
+    <strong>Passed underage users</strong>
+    <p>There are 1,286 users with a year of birth recorded that would imply they were less than 18 years old in 2023. 
+    95% of them passed KYC.</p>
+  </div>
+  <div class="fr-rec">
+    <span class="fr-label">Recommendation</span>
+    <strong>Review policy on minor onboarding.</strong>
+    <p>If this is a data quality issue, then records need to be updated. Otherwise, ARQ needs to have a clear stance 
+    on onboarding minors in compliance with applicable law.</p>
+  </div>
+</div>
+
 </div>
 """)
 
