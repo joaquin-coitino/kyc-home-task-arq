@@ -684,26 +684,26 @@ body {
 .cover h1 { font-size: 52px; font-weight: 800; color: #111827; margin-bottom: 14px; line-height: 1.1; }
 .cover .subtitle { font-size: 21px; color: #374151; margin-bottom: 0; }
 .cover .meta { font-size: 14px; color: #6B7280; border-top: 1px solid #E5E7EB; padding-top: 20px; margin-top: 0; }
-.page { padding: 48px 60px; max-width: 1100px; margin: 0 auto; }
+.page { padding: 24px 60px; max-width: 1100px; margin: 0 auto; }
 h2 {
   font-size: 22px; font-weight: 700;
   color: #0D2A6B;
   border-bottom: 3px solid #1A4FBA;
-  padding-bottom: 8px;
-  margin: 40px 0 20px;
+  padding-bottom: 6px;
+  margin: 20px 0 12px;
 }
-h3 { font-size: 16px; font-weight: 600; color: #374151; margin: 24px 0 10px; }
-p { line-height: 1.7; margin-bottom: 12px; color: #374151; }
+h3 { font-size: 16px; font-weight: 600; color: #374151; margin: 14px 0 6px; }
+p { line-height: 1.6; margin-bottom: 8px; color: #374151; }
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin: 24px 0 36px;
+  gap: 14px;
+  margin: 14px 0 20px;
 }
 .kpi {
   background: #F9FAFB;
   border-left: 4px solid #1A4FBA;
-  padding: 20px;
+  padding: 14px;
   border-radius: 6px;
 }
 .kpi .value { font-size: 28px; font-weight: 800; color: #0D2A6B; }
@@ -714,17 +714,17 @@ p { line-height: 1.7; margin-bottom: 12px; color: #374151; }
 .chart-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  margin: 24px 0;
+  gap: 24px;
+  margin: 12px 0;
   align-items: start;
 }
-.chart-box { margin: 20px 0; }
+.chart-box { margin: 10px 0; }
 .chart-box img { border-radius: 8px; }
 .finding {
   background: #EFF6FF;
   border-left: 4px solid #1A4FBA;
-  padding: 14px 18px;
-  margin: 14px 0;
+  padding: 10px 14px;
+  margin: 8px 0;
   border-radius: 0 6px 6px 0;
 }
 .finding.red   { background: #FEF2F2; border-left-color: #EF4444; }
@@ -872,7 +872,7 @@ h(f"""<!DOCTYPE html>
     </p>
   </div>
   <div class="meta">
-    Prepared for ARQ &nbsp;·&nbsp; March 2026
+    Joaquin Coitino &nbsp;·&nbsp; Prepared for ARQ &nbsp;·&nbsp; March 2026
   </div>
 </div>
 """)

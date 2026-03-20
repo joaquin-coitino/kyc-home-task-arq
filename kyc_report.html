@@ -25,26 +25,26 @@ body {
 .cover h1 { font-size: 52px; font-weight: 800; color: #111827; margin-bottom: 14px; line-height: 1.1; }
 .cover .subtitle { font-size: 21px; color: #374151; margin-bottom: 0; }
 .cover .meta { font-size: 14px; color: #6B7280; border-top: 1px solid #E5E7EB; padding-top: 20px; margin-top: 0; }
-.page { padding: 48px 60px; max-width: 1100px; margin: 0 auto; }
+.page { padding: 24px 60px; max-width: 1100px; margin: 0 auto; }
 h2 {
   font-size: 22px; font-weight: 700;
   color: #0D2A6B;
   border-bottom: 3px solid #1A4FBA;
-  padding-bottom: 8px;
-  margin: 40px 0 20px;
+  padding-bottom: 6px;
+  margin: 20px 0 12px;
 }
-h3 { font-size: 16px; font-weight: 600; color: #374151; margin: 24px 0 10px; }
-p { line-height: 1.7; margin-bottom: 12px; color: #374151; }
+h3 { font-size: 16px; font-weight: 600; color: #374151; margin: 14px 0 6px; }
+p { line-height: 1.6; margin-bottom: 8px; color: #374151; }
 .kpi-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 20px;
-  margin: 24px 0 36px;
+  gap: 14px;
+  margin: 14px 0 20px;
 }
 .kpi {
   background: #F9FAFB;
   border-left: 4px solid #1A4FBA;
-  padding: 20px;
+  padding: 14px;
   border-radius: 6px;
 }
 .kpi .value { font-size: 28px; font-weight: 800; color: #0D2A6B; }
@@ -55,17 +55,17 @@ p { line-height: 1.7; margin-bottom: 12px; color: #374151; }
 .chart-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 32px;
-  margin: 24px 0;
+  gap: 24px;
+  margin: 12px 0;
   align-items: start;
 }
-.chart-box { margin: 20px 0; }
+.chart-box { margin: 10px 0; }
 .chart-box img { border-radius: 8px; }
 .finding {
   background: #EFF6FF;
   border-left: 4px solid #1A4FBA;
-  padding: 14px 18px;
-  margin: 14px 0;
+  padding: 10px 14px;
+  margin: 8px 0;
   border-radius: 0 6px 6px 0;
 }
 .finding.red   { background: #FEF2F2; border-left-color: #EF4444; }
@@ -192,7 +192,7 @@ tr:nth-child(even) td { background: #F9FAFB; }
     </p>
   </div>
   <div class="meta">
-    Prepared for ARQ &nbsp;·&nbsp; March 2026
+    Joaquin Coitino &nbsp;·&nbsp; Prepared for ARQ &nbsp;·&nbsp; March 2026
   </div>
 </div>
 
@@ -245,7 +245,7 @@ tr:nth-child(even) td { background: #F9FAFB; }
 <div class="fr-pair no-break">
   <div class="fr-finding">
     <span class="fr-label">Finding 2 — Conversion</span>
-    <strong>Some document types are dealing to more failures</strong>
+    <strong>Some document types are leading to more failures</strong>
     <p>MEX National ID have an 89.3% pass rate vs. Electoral ID at 95.8%. 
     7.5% of failures are attributed to users uploading an unsupported document. 
     Document photo issues such as glare, blurr, data is hard to read, etc. represent over 10% of failures.   
@@ -460,7 +460,7 @@ tr:nth-child(even) td { background: #F9FAFB; }
 <ul style="margin:0 0 0 18px;line-height:1.8;">
   <li>Personal Pay selected Jumio primarily on cost.</li>
   <li>FaceTec is the main competitor (widely used by Mercado Libre and major banks).</li>
-  <li>National ID is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 86% of all attempts).</li>
+  <li>National ID is the only universally required document type across LATAM financial institutions. Passports and driver's licenses are much less common (note: consistent with our dataset where ID Cards represent 92% of documents).</li>
   <li>Jumio's document capture is aggressive in rejecting images that do not meet its quality bar. This creates friction.</li>
   <li>False positives were a concern prior to SLA negotiations; once managed, they came within agreed limits.</li>
 </ul>
@@ -490,7 +490,7 @@ tr:nth-child(even) td { background: #F9FAFB; }
   <tr><td><strong>PASSED with usability not executed</strong></td><td>201 users have <code>usability_decision=NOT_EXECUTED</code> with detail <code>NOT_UPLOADED</code>, yet all downstream checks (Extraction, Image Checks, Liveness, Similarity) passed.</td><td>We have assumed the usability check was passed instead of being not executed.</td></tr>
   <tr><td><strong>Non-standard top-level decision labels</strong></td><td>12 rows use <code>OK</code> (8) or <code>APPROVED</code> (4) in <code>decision_label</code> instead of <code>PASSED</code>; 1 row has <code>PASSED</code> in <code>usability_decision_details</code> instead of <code>OK</code>.</td><td>We have assumed <code>OK</code>, <code>APPROVED</code> and <code>PASSED</code> to be equivalent to each other.</td></tr>
   <tr><td><strong>Typo in check decisions</strong></td><td>3 rows use <code>PASSES</code> in <code>image_checks_decision</code>, <code>extraction_decision</code>, <code>data_checks_decision</code>.</td><td>We have assumed <code>PASSES</code> to be equal to <code>PASSED</code>.</td></tr>
-  <tr><td><strong>decision_type vs decision_label mismatch</strong></td><td>1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> in KYC_Details — the two datasets are inconsistent for this record. </td><td>We have assumed the user passed (insignificant impact anyway).</td></tr>
+  <tr><td><strong>decision_type vs decision_label mismatch</strong></td><td>1 user has <code>decision_type=PASSED</code> in KYC_Summary but <code>decision_label=REJECTED</code> in KYC_Details which means the two datasets are inconsistent for this record. </td><td>We have assumed the user passed (insignificant impact anyway).</td></tr>
 </table>
   
 <div class="finding blue no-break">
